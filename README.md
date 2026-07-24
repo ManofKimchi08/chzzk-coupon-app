@@ -134,5 +134,22 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
+## 🌐 24시간 무중단 클라우드 배포 가이드 (컴퓨터가 꺼져도 작동하는 방법)
+
+스트리머나 진행자의 컴퓨터가 꺼져 있어도 시청자들이 24시간 언제든 접속해서 쿠폰을 수령하게 하려면 **100% 무료 클라우드 서비스(Render)**를 활용할 수 있습니다.
+
+### Render 배포 3분 가이드
+1. **[Render.com](https://render.com/)** 접속 ➔ **`Sign in with GitHub`** 로그인
+2. **`New +` ➔ `Web Service`** 클릭 ➔ GitHub 저장소 `ManofKimchi08/chzzk-coupon-app` 선택
+3. **설정값 입력**:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: **`Free`**
+4. **Environment Variables**에 `.env`에 있던 `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `ADMIN_PASSWORD` 등 입력 후 **[Create Web Service]** 클릭
+5. 완성된 `https://yyyy.onrender.com` 주소를 네이버 개발자 센터 서비스 URL 및 Callback URL에 등록하면 **컴퓨터를 꺼두어도 24시간 자동 동작**합니다!
+
+---
+
 ## 📄 라이선스
 MIT License
+
