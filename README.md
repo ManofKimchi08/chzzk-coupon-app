@@ -126,8 +126,11 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 > 이미 `ChzzkCouponServer.exe`나 다른 서버가 구동 중인 상태에서 중복 실행하면 포트 충돌(`Errno 10048`) 오류가 발생합니다. 기존에 열린 서버 터미널 창을 끄고 재실행해 주세요.
 
 > [!NOTE]
-> **4. 외부 시청자 공개 시 (외부 접속 통로)**  
-> 내 컴퓨터에서 연 서버를 시청자들에게 공개할 때는 **localtunnel** (`npx localtunnel --port 8000`) 또는 포트 포워딩 등을 이용해 외부 접속 URL을 생성하여 전달해야 합니다. 이때 외부 URL을 네이버 개발자 센터 서비스 URL/Callback URL에도 등록해 주셔야 합니다.
+> **4. 외부 시청자 공개 방법 (더블클릭 자동 공개 기능 제공)**  
+> 내 컴퓨터에서 연 서버를 시청자들에게 공개할 때는 **`run_public.bat` 파일을 더블클릭**하시면 서버 구동과 동시에 전 세계 시청자용 공개 URL(`https://xxxx.loca.lt`)이 화면에 자동 생성됩니다.
+> - 생성된 공개 URL을 **네이버 개발자 센터**의 서비스 URL 및 Callback URL(`https://xxxx.loca.lt/auth/chzzk/callback`)에 등록하고 시청자들에게 공유해 주시면 바로 접속 가능합니다.
+> - 또는 무료 도구인 **ngrok** (`ngrok http 8000`)을 활용하셔도 더욱 안정적으로 외부 접속 주소를 띄울 수 있습니다.
+
 
 ---
 
