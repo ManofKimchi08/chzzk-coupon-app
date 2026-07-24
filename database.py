@@ -1,11 +1,17 @@
 import sqlite3
 import os
+import io
 import html
 import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "coupons.db")
+import sys
+
+if getattr(sys, 'frozen', False):
+    DB_PATH = os.path.join(os.path.dirname(sys.executable), "coupons.db")
+else:
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "coupons.db")
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -143,24 +149,150 @@ def add_allowed_winner(channel_id: str, nickname: str):
         cursor.execute("INSERT OR REPLACE INTO allowed_winners (channel_id, nickname) VALUES (?, ?)", (clean_id, clean_nick))
         conn.commit()
 
+def read_csv_robustly(contents: bytes) -> pd.DataFrame:
+    """UTF-8 BOM, CP949, EUC-KR 등 한국어 엑셀 CSV 인코딩 및 구분자(쉼표, 세미콜론, 탭)를 자동 감지하여 읽는 함수"""
+    encodings = ['utf-8-sig', 'cp949', 'euc-kr', 'utf-8', 'latin-1']
+    for enc in encodings:
+        try:
+            text = contents.decode(enc)
+            first_line = text.splitlines()[0] if text.splitlines() else ""
+            sep = ';' if ';' in first_line and ',' not in first_line else ('\t' if '\t' in first_line and ',' not in first_line else ',')
+            df = pd.read_csv(io.StringIO(text), sep=sep)
+            df.columns = [str(c).strip().lstrip('\ufeff') for c in df.columns]
+            return df
+        except Exception:
+            continue
+    raise ValueError("CSV 파일의 인코딩을 해석할 수 없습니다. UTF-8 또는 CP949(EUC-KR) 형식인지 확인해 주세요.")
+
+import re
+
 def import_allowed_winners_csv(df: pd.DataFrame) -> int:
-    if 'channel_id' not in df.columns:
-        raise ValueError("CSV 파일에 'channel_id' 컬럼이 있어야 합니다.")
+    seq_blacklist = {'no', 'num', 'number', 'index', 'idx', 'seq', 'sequence', '순번', '번호', '연번', '순서', 'count', 'n'}
+    high_channel_keys = ['channel_id', 'channelid', 'channel_hash', 'chzzk_id', 'chzzk_channel_id', '채널id', '채널아이디', '채널_id', '채널고유id', '고유id', '고유아이디']
+    low_channel_keys = ['channel', 'user_id', 'userid', '유저id', '유저아이디']
+    nick_keys = ['nickname', 'nick', '닉네임', '이름', 'user', 'username', '시청자', '시청자명', '유저명', '당첨자', '당첨자명']
+
+    col_map = {str(col).strip().lower().replace(" ", "_").replace("-", "_"): col for col in df.columns}
+    channel_col, nickname_col = None, None
+
+    # Step 1: 헤더 명칭 우선 매칭
+    for key in high_channel_keys:
+        if key in col_map:
+            channel_col = col_map[key]
+            break
+
+    for key in nick_keys:
+        if key in col_map:
+            nickname_col = col_map[key]
+            break
+
+    if not channel_col:
+        for key in low_channel_keys:
+            if key in col_map and key not in seq_blacklist:
+                channel_col = col_map[key]
+                break
+
+    # Step 2: 헤더로 명확히 찾지 못한 경우 데이터 내용(휴리스틱 점수) 분석
+    def is_sequence_col(series):
+        vals = [str(x).strip() for x in series.dropna() if str(x).strip() and str(x).strip().lower() != 'nan']
+        if not vals:
+            return True
+        return all(x.isdigit() and len(x) <= 5 for x in vals)
+
+    def channel_id_score(series):
+        vals = [str(x).strip() for x in series.dropna() if str(x).strip() and str(x).strip().lower() != 'nan']
+        if not vals:
+            return -100
+        if is_sequence_col(series):
+            return -50
+        score = 0
+        for val in vals:
+            if len(val) == 32 and re.match(r'^[0-9a-fA-F]{32}$', val):
+                score += 10
+            elif len(val) >= 6 and not val.isdigit():
+                score += 5
+            elif re.search(r'[a-zA-Z_]', val):
+                score += 3
+        return score
+
+    def nickname_score(series):
+        vals = [str(x).strip() for x in series.dropna() if str(x).strip() and str(x).strip().lower() != 'nan']
+        if not vals:
+            return -100
+        if is_sequence_col(series):
+            return -50
+        score = 0
+        for val in vals:
+            if re.search(r'[가-힣]', val):
+                score += 5
+            elif not val.isdigit():
+                score += 2
+        return score
+
+    cols_to_check = [c for c in df.columns if c != nickname_col and str(c).strip().lower().replace(" ", "_").replace("-", "_") not in seq_blacklist]
+
+    if not channel_col and cols_to_check:
+        best_col = max(cols_to_check, key=lambda c: channel_id_score(df[c]))
+        if channel_id_score(df[best_col]) > -20:
+            channel_col = best_col
+
+    if not nickname_col:
+        remaining = [c for c in df.columns if c != channel_col and str(c).strip().lower().replace(" ", "_").replace("-", "_") not in seq_blacklist]
+        if remaining:
+            best_nick = max(remaining, key=lambda c: nickname_score(df[c]))
+            if nickname_score(df[best_nick]) > -20:
+                nickname_col = best_nick
+
+    if not channel_col:
+        non_seq = [c for c in df.columns if str(c).strip().lower().replace(" ", "_").replace("-", "_") not in seq_blacklist]
+        if non_seq:
+            channel_col = non_seq[0]
+        elif len(df.columns) > 0:
+            channel_col = df.columns[0]
+        else:
+            raise ValueError("CSV 파일에 데이터를 읽을 수 있는 컬럼이 없습니다.")
+
     count = 0
     with get_connection() as conn:
         cursor = conn.cursor()
         for _, row in df.iterrows():
-            c_id = html.escape(str(row['channel_id']).strip())
-            nick = html.escape(str(row.get('nickname', '치지직시청자')).strip())
+            val = str(row[channel_col]).strip() if pd.notna(row[channel_col]) else ""
+            if not val or val.lower() == 'nan':
+                continue
+            c_id = html.escape(val)
+            
+            nick_val = ""
+            if nickname_col and pd.notna(row[nickname_col]):
+                nick_val = str(row[nickname_col]).strip()
+            if not nick_val or nick_val.lower() == 'nan':
+                nick_val = "치지직시청자"
+            nick = html.escape(nick_val)
+            
             cursor.execute("INSERT OR REPLACE INTO allowed_winners (channel_id, nickname) VALUES (?, ?)", (c_id, nick))
             count += 1
         conn.commit()
     return count
 
-def get_allowed_winners() -> List[Dict[str, Any]]:
+def get_allowed_winners(search_query: str = None) -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM allowed_winners")
+        query = """
+            SELECT 
+                w.channel_id, 
+                w.nickname,
+                c.coupon_code,
+                c.claimed_at
+            FROM allowed_winners w
+            LEFT JOIN coupon_pool c ON w.channel_id = c.assigned_channel_id
+        """
+        params = []
+        if search_query and search_query.strip():
+            s = f"%{search_query.strip()}%"
+            query += " WHERE w.channel_id LIKE ? OR w.nickname LIKE ? OR c.coupon_code LIKE ?"
+            params.extend([s, s, s])
+            
+        query += " ORDER BY w.channel_id ASC"
+        cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 def delete_allowed_winner(channel_id: str):
@@ -168,6 +300,14 @@ def delete_allowed_winner(channel_id: str):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM allowed_winners WHERE channel_id = ?", (channel_id,))
         conn.commit()
+
+def clear_all_allowed_winners() -> int:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM allowed_winners")
+        count = cursor.rowcount
+        conn.commit()
+        return count
 
 # --- 쿠폰 풀 관리 및 무작위 할당 ---
 def add_coupon_to_pool(coupon_code: str):
@@ -178,15 +318,30 @@ def add_coupon_to_pool(coupon_code: str):
         conn.commit()
 
 def import_coupons_csv(df: pd.DataFrame) -> int:
-    col = 'coupon_code' if 'coupon_code' in df.columns else df.columns[0]
+    seq_blacklist = {'no', 'num', 'number', 'index', 'idx', 'seq', 'sequence', '순번', '번호', '연번', '순서', 'count', 'n'}
+    col_map = {str(col).strip().lower().replace(" ", "_").replace("-", "_"): col for col in df.columns}
+
+    coupon_col = None
+    possible_coupon_keys = ['coupon_code', 'couponcode', 'coupon', 'code', '쿠폰', '쿠폰코드', '쿠폰_코드', '핀번호', 'pin']
+    for key in possible_coupon_keys:
+        if key in col_map:
+            coupon_col = col_map[key]
+            break
+
+    if not coupon_col:
+        non_seq_cols = [c for c in df.columns if str(c).strip().lower().replace(" ", "_").replace("-", "_") not in seq_blacklist]
+        coupon_col = non_seq_cols[0] if non_seq_cols else df.columns[0]
+
     count = 0
     with get_connection() as conn:
         cursor = conn.cursor()
         for _, row in df.iterrows():
-            code = html.escape(str(row[col]).strip())
-            if code:
-                cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (code,))
-                count += 1
+            val = str(row[coupon_col]).strip() if pd.notna(row[coupon_col]) else ""
+            if not val or val.lower() == 'nan':
+                continue
+            code = html.escape(val)
+            cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (code,))
+            count += 1
         conn.commit()
     return count
 
@@ -283,3 +438,11 @@ def delete_coupon_from_pool(coupon_id: int):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM coupon_pool WHERE id = ?", (coupon_id,))
         conn.commit()
+
+def clear_all_coupons() -> int:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM coupon_pool")
+        count = cursor.rowcount
+        conn.commit()
+        return count

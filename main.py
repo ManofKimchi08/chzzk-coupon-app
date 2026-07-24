@@ -16,8 +16,18 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import database
 
+import sys
+
+# PyInstaller 실행 환경 대응
+if getattr(sys, 'frozen', False):
+    BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    EXEC_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    EXEC_DIR = BASE_DIR
+
 # .env 환경변수 로드
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(os.path.join(EXEC_DIR, ".env"))
 
 CHZZK_CLIENT_ID = os.getenv("CHZZK_CLIENT_ID", "")
 CHZZK_CLIENT_SECRET = os.getenv("CHZZK_CLIENT_SECRET", "")
@@ -47,9 +57,11 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
 # 정적 파일 및 템플릿 설정
-BASE_DIR = os.path.dirname(__file__)
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+static_dir = os.path.join(BASE_DIR, "static")
+templates_dir = os.path.join(BASE_DIR, "templates")
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+templates = Jinja2Templates(directory=templates_dir)
 
 @app.on_event("startup")
 def on_startup():
@@ -164,11 +176,11 @@ async def logout(request: Request):
 
 # --- 진행자(Host/Admin) 관리자 기능 ---
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request, msg: str = None, error_msg: str = None, search: str = None):
+async def admin_page(request: Request, msg: str = None, error_msg: str = None, search: str = None, winner_search: str = None):
     is_admin = request.session.get("is_admin", False)
     coupons = database.get_all_coupons(search_query=search) if is_admin else []
     stats = database.get_coupon_pool_stats() if is_admin else {}
-    allowed_winners = database.get_allowed_winners() if is_admin else []
+    allowed_winners = database.get_allowed_winners(search_query=winner_search) if is_admin else []
     allow_all = database.is_allow_all_users() if is_admin else False
     event_notice = database.get_event_notice() if is_admin else ""
     
@@ -183,6 +195,7 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "allow_all": allow_all,
             "event_notice": event_notice,
             "search_query": search or "",
+            "winner_search_query": winner_search or "",
             "msg": msg,
             "error_msg": error_msg
         }
@@ -258,7 +271,7 @@ async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...
         if len(contents) > MAX_FILE_SIZE:
             return RedirectResponse(url="/admin?error_msg=CSV 파일 크기가 제한(5MB)을 초과했습니다.", status_code=303)
             
-        df = pd.read_csv(io.BytesIO(contents))
+        df = database.read_csv_robustly(contents)
         if len(df) > 10000:
             return RedirectResponse(url="/admin?error_msg=한 번에 최대 10,000행까지 업로드 가능합니다.", status_code=303)
             
@@ -283,7 +296,7 @@ async def admin_upload_winners_csv(request: Request, file: UploadFile = File(...
         if len(contents) > MAX_FILE_SIZE:
             return RedirectResponse(url="/admin?error_msg=CSV 파일 크기가 제한(5MB)을 초과했습니다.", status_code=303)
             
-        df = pd.read_csv(io.BytesIO(contents))
+        df = database.read_csv_robustly(contents)
         if len(df) > 10000:
             return RedirectResponse(url="/admin?error_msg=한 번에 최대 10,000행까지 업로드 가능합니다.", status_code=303)
             
@@ -299,6 +312,28 @@ async def admin_delete_winner(request: Request, channel_id: str = Form(...)):
     database.delete_allowed_winner(channel_id)
     return RedirectResponse(url="/admin?msg=당첨 대상자가 삭제되었습니다.", status_code=303)
 
+@app.post("/admin/clear-winners")
+async def admin_clear_winners(request: Request):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/admin", status_code=303)
+    count = database.clear_all_allowed_winners()
+    return RedirectResponse(url=f"/admin?msg=당첨 대상자 명단 {count}명이 모두 삭제되었습니다.", status_code=303)
+
+@app.get("/admin/export-winners-csv")
+async def admin_export_winners_csv(request: Request):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/admin", status_code=303)
+    winners = database.get_allowed_winners()
+    df = pd.DataFrame(winners)
+    output = io.StringIO()
+    df.to_csv(output, index=False, encoding='utf-8-sig')
+    
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=allowed_winners_export.csv"}
+    )
+
 @app.post("/admin/reset-coupon")
 async def admin_reset_coupon(request: Request, coupon_id: int = Form(...)):
     if not request.session.get("is_admin"):
@@ -312,6 +347,13 @@ async def admin_delete_coupon(request: Request, coupon_id: int = Form(...)):
         return RedirectResponse(url="/admin", status_code=303)
     database.delete_coupon_from_pool(coupon_id)
     return RedirectResponse(url="/admin?msg=쿠폰이 삭제되었습니다.", status_code=303)
+
+@app.post("/admin/clear-coupons")
+async def admin_clear_coupons(request: Request):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/admin", status_code=303)
+    count = database.clear_all_coupons()
+    return RedirectResponse(url=f"/admin?msg=쿠폰 풀의 모든 선물 쿠폰 {count}개가 일괄 삭제되었습니다.", status_code=303)
 
 @app.get("/admin/export-coupons-csv")
 async def admin_export_coupons_csv(request: Request):

@@ -196,75 +196,212 @@
 
                 </div>
 
-                <!-- 3. 쿠폰 실시간 검색 및 발급 현황 테이블 -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 15px;">
-                    <h3 style="font-size: 1.2rem;">📊 쿠폰 풀 상태 및 발급 내역 목록 (총 {{ coupons|length }}개)</h3>
-                    <form action="/admin" method="GET" style="display: flex; gap: 8px;">
-                        <input type="text" name="search" class="form-input" placeholder="코드 / ID / 닉네임 검색..." value="{{ search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 220px;">
-                        <button type="submit" class="btn-copy" style="padding: 6px 12px; font-size: 0.85rem;">검색</button>
-                        {% if search_query %}
-                            <a href="/admin" class="btn-logout" style="line-height: 24px;">초기화</a>
-                        {% endif %}
-                    </form>
+                <!-- 3. 쿠폰 실시간 검색 및 발급 현황 테이블 (접기/펼치기 가능) -->
+                <div style="margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 14px 20px; border-radius: var(--radius-md); cursor: pointer; user-select: none;" onclick="toggleCouponSection()">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="couponToggleIcon" style="font-size: 1.1rem; transition: transform 0.25s ease; color: var(--chzzk-mint); display: inline-block;">▶</span>
+                            <div>
+                                <h3 style="font-size: 1.15rem; margin: 0; display: inline-block;">📊 쿠폰 풀 상태 및 발급 내역 목록 <span style="font-size: 0.9rem; color: var(--chzzk-mint); font-weight: normal;">(총 {{ coupons|length }}개)</span></h3>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 {% if search_query %}접기{% else %}펼치기{% endif %}]</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;" onclick="event.stopPropagation();">
+                            <form action="/admin/clear-coupons" method="POST" onsubmit="return confirm('정말로 쿠폰 풀의 모든 쿠폰 코드를 삭제하시겠습니까?');" style="display: inline;">
+                                <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:6px 12px; border-radius:8px; font-size:0.8rem; cursor:pointer;">🗑️ 전체 쿠폰 삭제</button>
+                            </form>
+
+                            <form action="/admin" method="GET" style="display: flex; gap: 6px;">
+                                <input type="text" name="search" class="form-input" placeholder="코드 / ID / 닉네임 검색..." value="{{ search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 190px;">
+                                <button type="submit" class="btn-copy" style="padding: 6px 12px; font-size: 0.85rem;">검색</button>
+                                {% if search_query %}
+                                    <a href="/admin" class="btn-logout" style="line-height: 24px;">초기화</a>
+                                {% endif %}
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- 접히는 본문 테이블 -->
+                    <div id="couponSectionBody" style="{% if not search_query %}display: none;{% endif %} margin-top: 15px;">
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>쿠폰 코드</th>
+                                        <th>할당된 치지직 채널 ID</th>
+                                        <th>닉네임</th>
+                                        <th>발급 상태</th>
+                                        <th>수령 시각</th>
+                                        <th>관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for c in coupons %}
+                                        <tr>
+                                            <td>{{ c.id }}</td>
+                                            <td style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
+                                            <td><code>{{ c.assigned_channel_id or '-' }}</code></td>
+                                            <td><strong>{{ c.assigned_nickname or '-' }}</strong></td>
+                                            <td>
+                                                {% if c.assigned_channel_id %}
+                                                    <span class="badge badge-success">발급(수령)완료</span>
+                                                {% else %}
+                                                    <span class="badge badge-pending">대기 중 (미할당)</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="font-size: 0.8rem; color: var(--text-muted);">{{ c.claimed_at or '-' }}</td>
+                                            <td>
+                                                <div style="display: flex; gap: 6px;">
+                                                    {% if c.assigned_channel_id %}
+                                                        <form action="/admin/reset-coupon" method="POST" style="display:inline;">
+                                                            <input type="hidden" name="coupon_id" value="{{ c.id }}">
+                                                            <button type="submit" style="background: rgba(255,184,0,0.2); color: var(--accent-yellow); border:1px solid var(--accent-yellow); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">리셋</button>
+                                                        </form>
+                                                    {% endif %}
+                                                    <form action="/admin/delete-coupon" method="POST" style="display:inline;" onsubmit="return confirm('이 쿠폰을 삭제하시겠습니까?');">
+                                                        <input type="hidden" name="coupon_id" value="{{ c.id }}">
+                                                        <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">삭제</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                                {% if search_query %}
+                                                    검색 결과 조건에 맞는 쿠폰 데이터가 없습니다.
+                                                {% else %}
+                                                    등록된 쿠폰 코드가 없습니다. 위 폼을 통해 선물 쿠폰 코드를 추가해 주세요.
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-                
-                <div class="table-wrapper">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>쿠폰 코드</th>
-                                <th>할당된 치지직 채널 ID</th>
-                                <th>닉네임</th>
-                                <th>발급 상태</th>
-                                <th>수령 시각</th>
-                                <th>관리</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for c in coupons %}
-                                <tr>
-                                    <td>{{ c.id }}</td>
-                                    <td style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
-                                    <td><code>{{ c.assigned_channel_id or '-' }}</code></td>
-                                    <td><strong>{{ c.assigned_nickname or '-' }}</strong></td>
-                                    <td>
-                                        {% if c.assigned_channel_id %}
-                                            <span class="badge badge-success">발급(수령)완료</span>
-                                        {% else %}
-                                            <span class="badge badge-pending">대기 중 (미할당)</span>
-                                        {% endif %}
-                                    </td>
-                                    <td style="font-size: 0.8rem; color: var(--text-muted);">{{ c.claimed_at or '-' }}</td>
-                                    <td>
-                                        <div style="display: flex; gap: 6px;">
-                                            {% if c.assigned_channel_id %}
-                                                <form action="/admin/reset-coupon" method="POST" style="display:inline;">
-                                                    <input type="hidden" name="coupon_id" value="{{ c.id }}">
-                                                    <button type="submit" style="background: rgba(255,184,0,0.2); color: var(--accent-yellow); border:1px solid var(--accent-yellow); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">리셋</button>
+
+                <hr style="border-color: var(--border-color); margin: 30px 0;">
+
+                <!-- 4. 당첨 대상자 명단 목록 및 상태 UI (접기/펼치기 가능) -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 14px 20px; border-radius: var(--radius-md); cursor: pointer; user-select: none;" onclick="toggleWinnerSection()">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="winnerToggleIcon" style="font-size: 1.1rem; transition: transform 0.25s ease; color: var(--chzzk-mint); display: inline-block;">▶</span>
+                            <div>
+                                <h3 style="font-size: 1.15rem; margin: 0; display: inline-block;">👥 등록된 당첨 대상자 명단 <span style="font-size: 0.9rem; color: var(--chzzk-mint); font-weight: normal;">(총 {{ allowed_winners|length }}명)</span></h3>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 {% if winner_search_query %}접기{% else %}펼치기{% endif %}]</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;" onclick="event.stopPropagation();">
+                            <a href="/admin/export-winners-csv" class="btn-copy" style="text-decoration: none; font-size: 0.8rem; padding: 6px 12px;">📥 명단 CSV 내보내기</a>
+                            
+                            <form action="/admin/clear-winners" method="POST" onsubmit="return confirm('정말로 등록된 모든 당첨자 명단을 삭제하시겠습니까?');" style="display: inline;">
+                                <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:6px 12px; border-radius:8px; font-size:0.8rem; cursor:pointer;">🗑️ 전체 명단 삭제</button>
+                            </form>
+
+                            <form action="/admin" method="GET" style="display: flex; gap: 6px;">
+                                <input type="text" name="winner_search" class="form-input" placeholder="채널 ID / 닉네임 검색..." value="{{ winner_search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 180px;">
+                                <button type="submit" class="btn-copy" style="padding: 6px 12px; font-size: 0.85rem;">검색</button>
+                                {% if winner_search_query %}
+                                    <a href="/admin" class="btn-logout" style="line-height: 24px;">초기화</a>
+                                {% endif %}
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- 접히는 본문 테이블 -->
+                    <div id="winnerSectionBody" style="{% if not winner_search_query %}display: none;{% endif %} margin-top: 15px;">
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">업로드된 당첨 대상자 채널 ID 및 쿠폰 수령 상태입니다.</p>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>치지직 채널 ID (channelId)</th>
+                                        <th>닉네임</th>
+                                        <th>쿠폰 수령 여부</th>
+                                        <th>할당된 쿠폰 코드</th>
+                                        <th>수령 시각</th>
+                                        <th>관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for w in allowed_winners %}
+                                        <tr>
+                                            <td>{{ loop.index }}</td>
+                                            <td><code>{{ w.channel_id }}</code></td>
+                                            <td><strong>{{ w.nickname }}</strong></td>
+                                            <td>
+                                                {% if w.coupon_code %}
+                                                    <span class="badge badge-success">수령 완료</span>
+                                                {% else %}
+                                                    <span class="badge badge-pending">미수령</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="font-family: monospace; font-weight: bold; color: {% if w.coupon_code %}var(--chzzk-mint){% else %}var(--text-muted){% endif %};">
+                                                {{ w.coupon_code or '-' }}
+                                            </td>
+                                            <td style="font-size: 0.8rem; color: var(--text-muted);">{{ w.claimed_at or '-' }}</td>
+                                            <td>
+                                                <form action="/admin/delete-winner" method="POST" style="display:inline;" onsubmit="return confirm('이 당첨자를 명단에서 삭제하시겠습니까?');">
+                                                    <input type="hidden" name="channel_id" value="{{ w.channel_id }}">
+                                                    <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">삭제</button>
                                                 </form>
-                                            {% endif %}
-                                            <form action="/admin/delete-coupon" method="POST" style="display:inline;" onsubmit="return confirm('이 쿠폰을 삭제하시겠습니까?');">
-                                                <input type="hidden" name="coupon_id" value="{{ c.id }}">
-                                                <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">삭제</button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                            {% else %}
-                                <tr>
-                                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
-                                        {% if search_query %}
-                                            검색 결과 조건에 맞는 쿠폰 데이터가 없습니다.
-                                        {% else %}
-                                            등록된 쿠폰 코드가 없습니다. 위 폼을 통해 선물 쿠폰 코드를 추가해 주세요.
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                            </td>
+                                        </tr>
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                                {% if winner_search_query %}
+                                                    검색어 <strong>"{{ winner_search_query }}"</strong> 조건에 일치하는 당첨자가 없습니다.
+                                                {% else %}
+                                                    등록된 당첨 대상자가 없습니다. 위 폼이나 CSV 업로드를 통해 당첨자 명단을 등록해 주세요.
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
+
+                <script>
+                    function toggleCouponSection() {
+                        const body = document.getElementById('couponSectionBody');
+                        const icon = document.getElementById('couponToggleIcon');
+                        if (body.style.display === 'none' || body.style.display === '') {
+                            body.style.display = 'block';
+                            icon.style.transform = 'rotate(90deg)';
+                        } else {
+                            body.style.display = 'none';
+                            icon.style.transform = 'rotate(0deg)';
+                        }
+                    }
+
+                    function toggleWinnerSection() {
+                        const body = document.getElementById('winnerSectionBody');
+                        const icon = document.getElementById('winnerToggleIcon');
+                        if (body.style.display === 'none' || body.style.display === '') {
+                            body.style.display = 'block';
+                            icon.style.transform = 'rotate(90deg)';
+                        } else {
+                            body.style.display = 'none';
+                            icon.style.transform = 'rotate(0deg)';
+                        }
+                    }
+
+                    // 검색어 존재 시 기본 펼침 상태 유지
+                    if (document.getElementById('couponSectionBody') && document.getElementById('couponSectionBody').style.display !== 'none') {
+                        document.getElementById('couponToggleIcon').style.transform = 'rotate(90deg)';
+                    }
+                    if (document.getElementById('winnerSectionBody') && document.getElementById('winnerSectionBody').style.display !== 'none') {
+                        document.getElementById('winnerToggleIcon').style.transform = 'rotate(90deg)';
+                    }
+                </script>
 
             </div>
         {% endif %}
