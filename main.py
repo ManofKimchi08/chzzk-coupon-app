@@ -121,7 +121,10 @@ async def chzzk_callback(request: Request, code: str = None, state: str = None):
                 "nickname": nickname
             }
             
-            if channel_id == ADMIN_CHANNEL_ID:
+# 관리자 채널 ID 목록 (쉼표로 여러 명 지정 가능)
+ADMIN_CHANNEL_IDS = [x.strip() for x in os.getenv("ADMIN_CHANNEL_ID", "streamer_channel_123").split(",") if x.strip()]
+
+            if channel_id in ADMIN_CHANNEL_IDS:
                 request.session["is_admin"] = True
                 
     except Exception as e:
@@ -140,9 +143,10 @@ async def mock_login(request: Request, channel_id: str = "test_user_01", nicknam
         "channel_id": channel_id,
         "nickname": nickname
     }
-    if channel_id == ADMIN_CHANNEL_ID:
+    if channel_id in ADMIN_CHANNEL_IDS:
         request.session["is_admin"] = True
     return RedirectResponse(url="/")
+
 
 @app.get("/auth/logout")
 async def logout(request: Request):
