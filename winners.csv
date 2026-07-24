@@ -1,0 +1,5 @@
+channel_id,nickname,coupon_code,is_claimed
+test_user_01,트위치치지직팬01,CHZZK-GIFT-8A92-4912,False
+test_user_02,게임마스터_김치지,CHZZK-GIFT-77B1-9920,False
+test_user_03,스트리머열혈팬,CHZZK-GIFT-33X9-1029,False
+streamer_channel_123,진행자스트리머,CHZZK-ADMIN-GIFT-9999,False

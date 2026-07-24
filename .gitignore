@@ -1,0 +1,23 @@
+# Python Virtual Environment
+venv/
+ENV/
+env/
+
+# Environment Variables (비밀키 보호)
+.env
+
+# PyInstaller Build Folders
+build/
+dist/
+*.spec
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local SQLite Database
+*.db
+
+# OS Files
+.DS_Store
+Thumbs.db

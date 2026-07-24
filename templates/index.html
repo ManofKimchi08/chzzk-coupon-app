@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>치지직 스트리머 이벤트 - 1회성 무작위 쿠폰 수령</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Header Navbar -->
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span>CHZZK</span> EVENT
+            <span class="logo-badge">COUPON POOL</span>
+        </a>
+        <div class="nav-links">
+            <a href="/admin">진행자(관리자) 페이지</a>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <div class="container">
+        <div class="glass-card">
+            
+            <div class="event-header">
+                <span class="event-tag">🎁 CHZZK RANDOM COUPON EVENT</span>
+                <h1 class="event-title">시청자 당첨 선물 수령</h1>
+                <p class="event-desc">치지직 본인 인증으로 준비된 선물 쿠폰을 무작위로 1개 수령하세요.</p>
+            </div>
+
+            {% if not user %}
+                <!-- 로그인 전 화면 -->
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="/auth/chzzk/login" class="btn-chzzk-login">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM11 16H9V8H11V16ZM15 16H13V8H15V16Z" fill="#0A0D14"/>
+                        </svg>
+                        치지직 로그인으로 본인 인증하고 상품 받기
+                    </a>
+                </div>
+
+                <!-- 개발 및 시뮬레이션용 Mock 로그인 패널 -->
+                <div class="mock-panel">
+                    <div class="mock-title">⚡ 개발/테스트용 시뮬레이션 로그인 (Chzzk API 키 없이 테스트 가능)</div>
+                    <div class="mock-buttons">
+                        <a href="/auth/mock/login?channel_id=test_user_01&nickname=트위치치지직팬01" class="btn-mock">당첨자 1 로그인</a>
+                        <a href="/auth/mock/login?channel_id=test_user_02&nickname=게임마스터_김치지" class="btn-mock">당첨자 2 로그인</a>
+                        <a href="/auth/mock/login?channel_id=streamer_channel_123&nickname=진행자스트리머" class="btn-mock">진행자 계정 (자동 관리자)</a>
+                        <a href="/auth/mock/login?channel_id=unknown_user_99&nickname=미당첨자" class="btn-mock">미당첨 유저 테스트</a>
+                    </div>
+                </div>
+
+            {% else %}
+                <!-- 로그인 후 유저 정보 바 -->
+                <div class="user-info-bar">
+                    <div class="user-profile">
+                        <div class="user-avatar">{{ user.nickname[0] if user.nickname else 'U' }}</div>
+                        <div>
+                            <div class="user-name">{{ user.nickname }}</div>
+                            <div class="user-id">채널 ID: {{ user.channel_id }}</div>
+                        </div>
+                    </div>
+                    <a href="/auth/logout" class="btn-logout">로그아웃</a>
+                </div>
+
+                <!-- 수령 결과 섹션 -->
+                {% if claim_result.code == 'SUCCESS' %}
+                    <div class="coupon-box">
+                        <div class="coupon-label">🎉 무작위 추첨 할당 완료! 당첨 선물 쿠폰 코드</div>
+                        <div class="coupon-code" id="couponCode">{{ claim_result.coupon_code }}</div>
+                        <button class="btn-copy" onclick="copyCouponCode()">쿠폰 코드 복사하기</button>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px;">
+                            * 1회성 쿠폰이 할당되었습니다. (수령 시각: {{ claim_result.claimed_at }})
+                        </p>
+                    </div>
+
+                {% elif claim_result.code == 'ALREADY_CLAIMED' %}
+                    <div class="alert-card warning">
+                        <div class="alert-title">⚠️ 이미 수령 완료된 쿠폰이 존재합니다</div>
+                        <div class="alert-desc">본 계정으로 이미 무작위 발급된 선물 코드가 존재합니다.</div>
+                        <div style="margin-top: 15px; font-weight: bold; font-family: monospace; font-size: 1.3rem; color: #FFF;">
+                            {{ claim_result.coupon_code }}
+                        </div>
+                        <div style="font-size: 0.8rem; margin-top: 8px;">(수령 시각: {{ claim_result.claimed_at }})</div>
+                    </div>
+
+                {% elif claim_result.code == 'NO_COUPONS' %}
+                    <div class="alert-card warning">
+                        <div class="alert-title">🎁 모든 선물 쿠폰이 소진되었습니다</div>
+                        <div class="alert-desc">이벤트에 준비된 모든 선물 쿠폰 코드가 마감되었습니다. 진행자의 추가 등록을 기다려 주세요.</div>
+                    </div>
+
+                {% else %}
+                    <div class="alert-card danger">
+                        <div class="alert-title">🚫 당첨 대상자가 아니거나 수령 불가능합니다</div>
+                        <div class="alert-desc">입력된 치지직 채널 ID (<code>{{ user.channel_id }}</code>)는 이번 이벤트 당첨 대상자 명단에 포함되어 있지 않습니다.</div>
+                    </div>
+                {% endif %}
+
+            {% endif %}
+
+        </div>
+    </div>
+
+    <script>
+        function copyCouponCode() {
+            const codeText = document.getElementById('couponCode').innerText;
+            navigator.clipboard.writeText(codeText).then(() => {
+                alert('쿠폰 코드가 클립보드에 복사되었습니다! 🎉\n' + codeText);
+            }).catch(err => {
+                alert('복사에 실패했습니다. 수동으로 복사해주세요.');
+            });
+        }
+    </script>
+</body>
+</html>

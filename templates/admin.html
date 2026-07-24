@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>진행자(스트리머) 전용 관리자 대시보드 - 쿠폰 풀 관리</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Header Navbar -->
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <span>CHZZK</span> ADMIN
+            <span class="logo-badge">COUPON POOL</span>
+        </a>
+        <div class="nav-links">
+            <a href="/">당첨자 수령 페이지로 이동</a>
+            {% if is_admin %}
+                <a href="/admin/logout" style="color: var(--accent-red);">관리자 로그아웃</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container admin-container">
+        
+        {% if not is_admin %}
+            <!-- 관리자 로그인 폼 -->
+            <div class="glass-card" style="max-width: 480px; margin: 0 auto;">
+                <div class="event-header" style="margin-bottom: 25px;">
+                    <span class="event-tag">🔐 HOST LOGIN</span>
+                    <h2 class="event-title">진행자 전용 로그인</h2>
+                    <p class="event-desc">무작위 쿠폰 풀 등록 및 당첨자 관리 대시보드</p>
+                </div>
+
+                {% if error_msg %}
+                    <div class="alert-card danger" style="padding: 12px; margin-bottom: 20px; font-size: 0.85rem;">
+                        {{ error_msg }}
+                    </div>
+                {% endif %}
+
+                <form action="/admin/login" method="POST">
+                    <div class="form-group">
+                        <label for="admin_password">관리자 비밀번호</label>
+                        <input type="password" id="admin_password" name="password" class="form-input" placeholder="비밀번호 입력 (기본: streamer123!)" required>
+                    </div>
+                    <button type="submit" class="btn-primary" style="margin-top: 10px;">관리자 대시보드 접속</button>
+                </form>
+
+                <div style="margin-top: 20px; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
+                    💡 스트리머 치지직 계정(<code>ADMIN_CHANNEL_ID</code>)으로 메인 화면에서 로그인하셔도 관리자 권한이 부여됩니다.
+                </div>
+            </div>
+
+        {% else %}
+            <!-- 관리자 대시보드 메인 -->
+            <div class="glass-card">
+                
+                <div class="admin-header">
+                    <div>
+                        <h1 style="font-size: 1.8rem; font-weight: 800;">🎙️ 무작위 쿠폰 풀 관리 대시보드</h1>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">선물 쿠폰 코드를 등록해 두면, 당첨자가 로그인 시 1개씩 무작위 자동 할당됩니다.</p>
+                    </div>
+                    <div>
+                        <a href="/admin/export-coupons-csv" class="btn-copy" style="text-decoration: none; display: inline-block;">📥 쿠폰 풀 CSV 내보내기</a>
+                    </div>
+                </div>
+
+                {% if msg %}
+                    <div class="alert-card warning" style="padding: 12px; margin-bottom: 20px; font-size: 0.85rem; color: var(--chzzk-mint); background: rgba(0, 255, 163, 0.1); border-color: var(--chzzk-mint);">
+                        {{ msg }}
+                    </div>
+                {% endif %}
+
+                <!-- 통계 수치 카드 3열 -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
+                    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">총 준비된 쿠폰 수</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: #FFF; margin-top: 5px;">{{ stats.total }}개</div>
+                    </div>
+                    <div style="background: rgba(0, 255, 163, 0.05); border: 1px solid var(--chzzk-mint); padding: 18px; border-radius: var(--radius-md); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--chzzk-mint);">발급(수령) 완료</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: var(--chzzk-mint); margin-top: 5px;">{{ stats.assigned }}개</div>
+                    </div>
+                    <div style="background: rgba(255, 184, 0, 0.05); border: 1px solid var(--accent-yellow); padding: 18px; border-radius: var(--radius-md); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--accent-yellow);">남은 쿠폰 수량</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: var(--accent-yellow); margin-top: 5px;">{{ stats.remaining }}개</div>
+                    </div>
+                </div>
+
+                <!-- 이벤트 수령 정책 설정 카드 -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md); margin-bottom: 25px; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 1rem;">⚙️ 수령 대상자 범위 설정</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+                            현재 상태: 
+                            {% if allow_all %}
+                                <strong style="color: var(--chzzk-mint);">[모든 치지직 로그인 유저 수령 허용]</strong>
+                            {% else %}
+                                <strong style="color: var(--accent-yellow);">[지정된 당첨 대상자 명단만 수령 허용]</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <form action="/admin/config/allow-all" method="POST">
+                        <input type="hidden" name="allow_all" value="{{ 'false' if allow_all else 'true' }}">
+                        <button type="submit" class="btn-copy" style="font-size: 0.85rem; padding: 8px 16px;">
+                            {% if allow_all %}지정 명단 제한으로 변경{% else %}모든 유저 수령 허용으로 변경{% endif %}
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 2개 섹션 레이아웃 -->
+                <div class="admin-grid">
+                    
+                    <!-- 1. 쿠폰 코드 풀 추가 섹션 -->
+                    <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 20px; border-radius: var(--radius-md);">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--chzzk-mint);">🎁 1. 선물 쿠폰 코드 풀 등록</h3>
+                        
+                        <!-- 단건 등록 -->
+                        <form action="/admin/add-coupon" method="POST" style="margin-bottom: 20px;">
+                            <div class="form-group">
+                                <label for="coupon_code">신규 쿠폰 코드 입력</label>
+                                <input type="text" id="coupon_code" name="coupon_code" class="form-input" placeholder="예: GIFT-CHZZK-POOL-9901" required>
+                            </div>
+                            <button type="submit" class="btn-primary">쿠폰 풀에 1개 추가</button>
+                        </form>
+
+                        <hr style="border-color: var(--border-color); margin: 15px 0;">
+
+                        <!-- CSV 일괄 업로드 -->
+                        <form action="/admin/upload-coupons-csv" method="POST" enctype="multipart/form-data">
+                            <div class="form-group">
+                                <label for="coupons_file">쿠폰 목록 CSV 대량 업로드</label>
+                                <input type="file" id="coupons_file" name="file" accept=".csv" class="form-input" required>
+                            </div>
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
+                                * CSV 컬럼 헤더: <code>coupon_code</code> (코드만 적힌 엑셀 파일 가능)
+                            </p>
+                            <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #00C853, #009688); color: #FFF;">쿠폰 풀 일괄 업로드</button>
+                        </form>
+                    </div>
+
+                    <!-- 2. 당첨 대상자 명단 등록 섹션 -->
+                    <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 20px; border-radius: var(--radius-md);">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--chzzk-mint);">👥 2. 당첨 대상자 명단 등록</h3>
+                        
+                        <!-- 단건 등록 -->
+                        <form action="/admin/add-winner" method="POST" style="margin-bottom: 20px;">
+                            <div class="form-group">
+                                <label for="channel_id">치지직 채널 ID (channelId)</label>
+                                <input type="text" id="channel_id" name="channel_id" class="form-input" placeholder="예: user_12345" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="nickname">당첨자 닉네임</label>
+                                <input type="text" id="nickname" name="nickname" class="form-input" placeholder="예: 치지직시청자" value="치지직시청자">
+                            </div>
+                            <button type="submit" class="btn-primary">당첨 대상자 추가</button>
+                        </form>
+
+                        <hr style="border-color: var(--border-color); margin: 15px 0;">
+
+                        <!-- CSV 일괄 업로드 -->
+                        <form action="/admin/upload-winners-csv" method="POST" enctype="multipart/form-data">
+                            <div class="form-group">
+                                <label for="winners_file">당첨자 목록 CSV 일괄 업로드</label>
+                                <input type="file" id="winners_file" name="file" accept=".csv" class="form-input" required>
+                            </div>
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
+                                * CSV 컬럼 헤더: <code>channel_id</code>, <code>nickname</code>
+                            </p>
+                            <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #00C853, #009688); color: #FFF;">당첨자 명단 일괄 업로드</button>
+                        </form>
+                    </div>
+
+                </div>
+
+                <!-- 3. 쿠폰 풀 발급 현황 테이블 -->
+                <h3 style="font-size: 1.2rem; margin-bottom: 15px;">📊 쿠폰 풀 상태 및 발급 내역 목록 (총 {{ coupons|length }}개)</h3>
+                
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>쿠폰 코드</th>
+                                <th>할당된 치지직 채널 ID</th>
+                                <th>닉네임</th>
+                                <th>발급 상태</th>
+                                <th>수령 시각</th>
+                                <th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in coupons %}
+                                <tr>
+                                    <td>{{ c.id }}</td>
+                                    <td style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
+                                    <td><code>{{ c.assigned_channel_id or '-' }}</code></td>
+                                    <td><strong>{{ c.assigned_nickname or '-' }}</strong></td>
+                                    <td>
+                                        {% if c.assigned_channel_id %}
+                                            <span class="badge badge-success">발급(수령)완료</span>
+                                        {% else %}
+                                            <span class="badge badge-pending">대기 중 (미할당)</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="font-size: 0.8rem; color: var(--text-muted);">{{ c.claimed_at or '-' }}</td>
+                                    <td>
+                                        <div style="display: flex; gap: 6px;">
+                                            {% if c.assigned_channel_id %}
+                                                <form action="/admin/reset-coupon" method="POST" style="display:inline;">
+                                                    <input type="hidden" name="coupon_id" value="{{ c.id }}">
+                                                    <button type="submit" style="background: rgba(255,184,0,0.2); color: var(--accent-yellow); border:1px solid var(--accent-yellow); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">리셋</button>
+                                                </form>
+                                            {% endif %}
+                                            <form action="/admin/delete-coupon" method="POST" style="display:inline;" onsubmit="return confirm('이 쿠폰을 삭제하시겠습니까?');">
+                                                <input type="hidden" name="coupon_id" value="{{ c.id }}">
+                                                <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">삭제</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                        등록된 쿠폰 코드가 없습니다. 위 폼을 통해 선물 쿠폰 코드를 추가해 주세요.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        {% endif %}
+
+    </div>
+
+</body>
+</html>
