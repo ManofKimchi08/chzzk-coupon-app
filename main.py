@@ -190,7 +190,8 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
 
 @app.post("/admin/login")
 async def admin_login(request: Request, password: str = Form(...)):
-    if password == ADMIN_PASSWORD:
+    current_pass = database.get_admin_password()
+    if password == current_pass:
         request.session["is_admin"] = True
         return RedirectResponse(url="/admin", status_code=303)
     
@@ -216,12 +217,22 @@ async def admin_logout(request: Request):
     request.session["is_admin"] = False
     return RedirectResponse(url="/admin", status_code=303)
 
+@app.post("/admin/change-password")
+async def admin_change_password(request: Request, new_password: str = Form(...)):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/admin", status_code=303)
+    if len(new_password.strip()) < 4:
+        return RedirectResponse(url="/admin?error_msg=비밀번호는 최소 4자리 이상이어야 합니다.", status_code=303)
+    database.set_admin_password(new_password)
+    return RedirectResponse(url="/admin?msg=관리자 비밀번호가 성공적으로 변경되었습니다.", status_code=303)
+
 @app.post("/admin/notice")
 async def admin_update_notice(request: Request, event_notice: str = Form(...)):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
     database.set_event_notice(event_notice)
     return RedirectResponse(url="/admin?msg=시청자 페이지 이벤트 공지 문구가 갱신되었습니다.", status_code=303)
+
 
 @app.post("/admin/config/allow-all")
 async def admin_config_allow_all(request: Request, allow_all: bool = Form(False)):

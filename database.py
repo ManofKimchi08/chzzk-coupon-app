@@ -44,8 +44,10 @@ def init_db():
         """)
         cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('allow_all_users', 'false')")
         cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('event_notice', '치지직 본인 인증으로 1회성 선물 쿠폰 코드를 무작위 수령하세요.')")
+        cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('admin_password', 'streamer123!')")
         
         conn.commit()
+
     
     sync_initial_seed_data()
 
@@ -106,6 +108,23 @@ def set_event_notice(notice: str):
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('event_notice', ?)", (sanitized_notice,))
         conn.commit()
+
+def get_admin_password() -> str:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM config WHERE key = 'admin_password'")
+        row = cursor.fetchone()
+        if row and row[0]:
+            return row[0]
+    return os.getenv("ADMIN_PASSWORD", "streamer123!")
+
+def set_admin_password(new_pass: str):
+    clean_pass = new_pass.strip()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('admin_password', ?)", (clean_pass,))
+        conn.commit()
+
 
 # --- 당첨 대상자 관리 ---
 def is_allowed_winner(channel_id: str) -> bool:
