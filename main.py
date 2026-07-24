@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import secrets
 from urllib.parse import urlencode
 import httpx
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import database
 
@@ -26,8 +28,20 @@ SECRET_KEY = os.getenv("SECRET_KEY", "chzzk_secret_key_2026")
 ENABLE_MOCK_LOGIN = os.getenv("ENABLE_MOCK_LOGIN", "true").lower() == "true"
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB 파일 업로드 제한
+ADMIN_CHANNEL_IDS = [x.strip() for x in ADMIN_CHANNEL_ID.split(",") if x.strip()]
 
 app = FastAPI(title="Chzzk Coupon Pool Claim App")
+
+# 보안 헤더 추가 미들웨어
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # 세션 미들웨어 추가
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
@@ -46,25 +60,26 @@ async def index_page(request: Request):
     user = request.session.get("user")
     claim_result = None
     if user and "channel_id" in user:
-        # 무작위 쿠폰 풀 1회성 무작위 자동 할당 처리
         claim_result = database.claim_random_coupon(user["channel_id"], user.get("nickname", "시청자"))
+        
+    event_notice = database.get_event_notice()
         
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "user": user,
-            "claim_result": claim_result
+            "claim_result": claim_result,
+            "event_notice": event_notice
         }
     )
 
-# --- 치지직 OAuth 연동 (보안 CSRF State 검증 적용) ---
+# --- 치지직 OAuth 연동 ---
 @app.get("/auth/chzzk/login")
 async def chzzk_login(request: Request):
     if not CHZZK_CLIENT_ID or CHZZK_CLIENT_ID == "mock_client_id":
         return RedirectResponse(url="/auth/mock/login?channel_id=test_user_01&nickname=테스트유저01")
     
-    # 암호학적으로 안전한 CSRF 토큰 생성
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
     params = {
@@ -78,7 +93,6 @@ async def chzzk_login(request: Request):
 
 @app.get("/auth/chzzk/callback")
 async def chzzk_callback(request: Request, code: str = None, state: str = None):
-    # 1. CSRF State 토큰 엄격한 검증
     saved_state = request.session.get("oauth_state")
     if not state or not saved_state or state != saved_state:
         return RedirectResponse(url="/?error=csrf_validation_failed")
@@ -121,9 +135,6 @@ async def chzzk_callback(request: Request, code: str = None, state: str = None):
                 "nickname": nickname
             }
             
-# 관리자 채널 ID 목록 (쉼표로 여러 명 지정 가능)
-ADMIN_CHANNEL_IDS = [x.strip() for x in os.getenv("ADMIN_CHANNEL_ID", "streamer_channel_123").split(",") if x.strip()]
-
             if channel_id in ADMIN_CHANNEL_IDS:
                 request.session["is_admin"] = True
                 
@@ -133,7 +144,6 @@ ADMIN_CHANNEL_IDS = [x.strip() for x in os.getenv("ADMIN_CHANNEL_ID", "streamer_
     
     return RedirectResponse(url="/")
 
-# 개발/테스트용 시뮬레이션 로그인 (보안 스위치 적용)
 @app.get("/auth/mock/login")
 async def mock_login(request: Request, channel_id: str = "test_user_01", nickname: str = "시뮬레이션유저"):
     if not ENABLE_MOCK_LOGIN:
@@ -147,7 +157,6 @@ async def mock_login(request: Request, channel_id: str = "test_user_01", nicknam
         request.session["is_admin"] = True
     return RedirectResponse(url="/")
 
-
 @app.get("/auth/logout")
 async def logout(request: Request):
     request.session.clear()
@@ -155,12 +164,13 @@ async def logout(request: Request):
 
 # --- 진행자(Host/Admin) 관리자 기능 ---
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request, msg: str = None, error_msg: str = None):
+async def admin_page(request: Request, msg: str = None, error_msg: str = None, search: str = None):
     is_admin = request.session.get("is_admin", False)
-    coupons = database.get_all_coupons() if is_admin else []
+    coupons = database.get_all_coupons(search_query=search) if is_admin else []
     stats = database.get_coupon_pool_stats() if is_admin else {}
     allowed_winners = database.get_allowed_winners() if is_admin else []
     allow_all = database.is_allow_all_users() if is_admin else False
+    event_notice = database.get_event_notice() if is_admin else ""
     
     return templates.TemplateResponse(
         request,
@@ -171,6 +181,8 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None):
             "stats": stats,
             "allowed_winners": allowed_winners,
             "allow_all": allow_all,
+            "event_notice": event_notice,
+            "search_query": search or "",
             "msg": msg,
             "error_msg": error_msg
         }
@@ -181,6 +193,9 @@ async def admin_login(request: Request, password: str = Form(...)):
     if password == ADMIN_PASSWORD:
         request.session["is_admin"] = True
         return RedirectResponse(url="/admin", status_code=303)
+    
+    # 비밀번호 실패 시 지연 처리 (Brute-Force 방어)
+    time.sleep(1.0)
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -190,6 +205,8 @@ async def admin_login(request: Request, password: str = Form(...)):
             "stats": {},
             "allowed_winners": [],
             "allow_all": False,
+            "event_notice": "",
+            "search_query": "",
             "error_msg": "관리자 비밀번호가 올바르지 않습니다."
         }
     )
@@ -199,6 +216,13 @@ async def admin_logout(request: Request):
     request.session["is_admin"] = False
     return RedirectResponse(url="/admin", status_code=303)
 
+@app.post("/admin/notice")
+async def admin_update_notice(request: Request, event_notice: str = Form(...)):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/admin", status_code=303)
+    database.set_event_notice(event_notice)
+    return RedirectResponse(url="/admin?msg=시청자 페이지 이벤트 공지 문구가 갱신되었습니다.", status_code=303)
+
 @app.post("/admin/config/allow-all")
 async def admin_config_allow_all(request: Request, allow_all: bool = Form(False)):
     if not request.session.get("is_admin"):
@@ -207,7 +231,6 @@ async def admin_config_allow_all(request: Request, allow_all: bool = Form(False)
     status_str = "모든 치지직 유저 수령 허용 모드" if allow_all else "지정 당첨자 전용 모드"
     return RedirectResponse(url=f"/admin?msg=수령 설정이 변경되었습니다: [{status_str}]", status_code=303)
 
-# 쿠폰 풀 단건 등록
 @app.post("/admin/add-coupon")
 async def admin_add_coupon(request: Request, coupon_code: str = Form(...)):
     if not request.session.get("is_admin"):
@@ -215,7 +238,6 @@ async def admin_add_coupon(request: Request, coupon_code: str = Form(...)):
     database.add_coupon_to_pool(coupon_code)
     return RedirectResponse(url="/admin?msg=쿠폰 코드가 쿠폰 풀에 추가되었습니다.", status_code=303)
 
-# 쿠폰 풀 CSV 일괄 등록 (용량 및 행 수 제한 검증 적용)
 @app.post("/admin/upload-coupons-csv")
 async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...)):
     if not request.session.get("is_admin"):
@@ -234,7 +256,6 @@ async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...
     except Exception as e:
         return RedirectResponse(url=f"/admin?error_msg=쿠폰 CSV 업로드 실패: {str(e)}", status_code=303)
 
-# 당첨 대상자 단건 등록
 @app.post("/admin/add-winner")
 async def admin_add_winner(request: Request, channel_id: str = Form(...), nickname: str = Form("치지직시청자")):
     if not request.session.get("is_admin"):
@@ -242,7 +263,6 @@ async def admin_add_winner(request: Request, channel_id: str = Form(...), nickna
     database.add_allowed_winner(channel_id, nickname)
     return RedirectResponse(url="/admin?msg=당첨 대상자가 명단에 추가되었습니다.", status_code=303)
 
-# 당첨 대상자 CSV 일괄 등록 (용량 및 행 수 제한 검증 적용)
 @app.post("/admin/upload-winners-csv")
 async def admin_upload_winners_csv(request: Request, file: UploadFile = File(...)):
     if not request.session.get("is_admin"):
