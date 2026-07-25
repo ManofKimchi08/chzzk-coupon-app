@@ -196,6 +196,10 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "event_notice": event_notice,
             "search_query": search or "",
             "winner_search_query": winner_search or "",
+            "chzzk_client_id": CHZZK_CLIENT_ID,
+            "chzzk_client_secret": CHZZK_CLIENT_SECRET,
+            "chzzk_redirect_uri": CHZZK_REDIRECT_URI,
+            "enable_mock_login": ENABLE_MOCK_LOGIN,
             "msg": msg,
             "error_msg": error_msg
         }
@@ -237,7 +241,68 @@ async def admin_change_password(request: Request, new_password: str = Form(...))
     if len(new_password.strip()) < 4:
         return RedirectResponse(url="/admin?error_msg=비밀번호는 최소 4자리 이상이어야 합니다.", status_code=303)
     database.set_admin_password(new_password)
+    
+    global ADMIN_PASSWORD
+    ADMIN_PASSWORD = new_password
+    env_path = os.path.join(EXEC_DIR, ".env")
+    env_content = f"""# 치지직 Open API Client Credentials
+CHZZK_CLIENT_ID={CHZZK_CLIENT_ID}
+CHZZK_CLIENT_SECRET={CHZZK_CLIENT_SECRET}
+CHZZK_REDIRECT_URI={CHZZK_REDIRECT_URI}
+
+# 시뮬레이션(Mock) 테스트 로그인 활성화 여부
+ENABLE_MOCK_LOGIN={'true' if ENABLE_MOCK_LOGIN else 'false'}
+
+# 관리자(진행자) 설정
+ADMIN_CHANNEL_ID={ADMIN_CHANNEL_ID}
+ADMIN_PASSWORD={ADMIN_PASSWORD}
+
+# 세션 비밀키
+SECRET_KEY={SECRET_KEY}
+"""
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write(env_content)
+        
     return RedirectResponse(url="/admin?msg=관리자 비밀번호가 성공적으로 변경되었습니다.", status_code=303)
+
+@app.post("/admin/update-env")
+async def admin_update_env(
+    request: Request,
+    client_id: str = Form(""),
+    client_secret: str = Form(""),
+    redirect_uri: str = Form(""),
+    enable_mock_login: bool = Form(False)
+):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/admin", status_code=303)
+        
+    global CHZZK_CLIENT_ID, CHZZK_CLIENT_SECRET, CHZZK_REDIRECT_URI, ENABLE_MOCK_LOGIN
+    
+    CHZZK_CLIENT_ID = client_id.strip()
+    CHZZK_CLIENT_SECRET = client_secret.strip()
+    CHZZK_REDIRECT_URI = redirect_uri.strip()
+    ENABLE_MOCK_LOGIN = enable_mock_login
+    
+    env_path = os.path.join(EXEC_DIR, ".env")
+    env_content = f"""# 치지직 Open API Client Credentials
+CHZZK_CLIENT_ID={CHZZK_CLIENT_ID}
+CHZZK_CLIENT_SECRET={CHZZK_CLIENT_SECRET}
+CHZZK_REDIRECT_URI={CHZZK_REDIRECT_URI}
+
+# 시뮬레이션(Mock) 테스트 로그인 활성화 여부
+ENABLE_MOCK_LOGIN={'true' if ENABLE_MOCK_LOGIN else 'false'}
+
+# 관리자(진행자) 설정
+ADMIN_CHANNEL_ID={ADMIN_CHANNEL_ID}
+ADMIN_PASSWORD={ADMIN_PASSWORD}
+
+# 세션 비밀키
+SECRET_KEY={SECRET_KEY}
+"""
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write(env_content)
+        
+    return RedirectResponse(url="/admin?msg=네이버 치지직 API 키 및 접속 설정이 성공적으로 저장되었습니다!", status_code=303)
 
 @app.post("/admin/notice")
 async def admin_update_notice(request: Request, event_notice: str = Form(...)):
