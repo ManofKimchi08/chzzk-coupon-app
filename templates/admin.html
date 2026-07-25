@@ -61,10 +61,25 @@
                         <h1 style="font-size: 1.8rem; font-weight: 800;">🎙️ 무작위 쿠폰 풀 관리 대시보드</h1>
                         <p style="color: var(--text-muted); font-size: 0.9rem;">선물 쿠폰 코드를 등록해 두면, 당첨자가 로그인 시 1개씩 무작위 자동 할당됩니다.</p>
                     </div>
-                    <div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button type="button" onclick="copyViewerShareText()" class="btn-primary" style="background: linear-gradient(135deg, #00FFA3, #00C853); color: #000; font-weight: bold; font-size: 0.85rem; padding: 8px 16px;">
+                            📋 시청자 수령 안내문 & 주소 복사
+                        </button>
                         <a href="/admin/export-coupons-csv" class="btn-copy" style="text-decoration: none; display: inline-block;">📥 쿠폰 풀 CSV 내보내기</a>
                     </div>
                 </div>
+
+                <script>
+                    function copyViewerShareText() {
+                        const origin = window.location.origin;
+                        const text = `🎁 [치지직 선물 쿠폰 무작위 수령 안내]\n아래 주소로 들어오셔서 치지직 로그인 본인 인증 후 쿠폰을 수령하세요!\n👉 ${origin}`;
+                        navigator.clipboard.writeText(text).then(() => {
+                            alert("시청자 공유용 수령 안내문과 링크가 클립보드에 복사되었습니다!\n\n방송 채팅창이나 커뮤니티에 붙여넣어 공유하세요.");
+                        }).catch(() => {
+                            alert(`공유 링크: ${origin}`);
+                        });
+                    }
+                </script>
 
                 {% if msg %}
                     <div class="alert-card warning" style="padding: 12px; margin-bottom: 20px; font-size: 0.85rem; color: var(--chzzk-mint); background: rgba(0, 255, 163, 0.1); border-color: var(--chzzk-mint);">
@@ -192,8 +207,9 @@
                                 <label for="coupons_file">쿠폰 목록 CSV 대량 업로드</label>
                                 <input type="file" id="coupons_file" name="file" accept=".csv" class="form-input" required>
                             </div>
-                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
-                                * CSV 컬럼 헤더: <code>coupon_code</code>
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                                <span>* CSV 컬럼 헤더: <code>coupon_code</code></span>
+                                <a href="/admin/sample-coupons-csv" style="color: var(--chzzk-mint); font-size: 0.75rem; text-decoration: underline;">📄 샘플 CSV 양식 다운로드</a>
                             </p>
                             <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #00C853, #009688); color: #FFF;">쿠폰 풀 일괄 업로드</button>
                         </form>
@@ -222,8 +238,9 @@
                                 <label for="winners_file">당첨자 목록 CSV 일괄 업로드</label>
                                 <input type="file" id="winners_file" name="file" accept=".csv" class="form-input" required>
                             </div>
-                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
-                                * CSV 컬럼 헤더: <code>channel_id</code>, <code>nickname</code>
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                                <span>* CSV 컬럼 헤더: <code>channel_id</code>, <code>nickname</code></span>
+                                <a href="/admin/sample-winners-csv" style="color: var(--chzzk-mint); font-size: 0.75rem; text-decoration: underline;">📄 샘플 CSV 양식 다운로드</a>
                             </p>
                             <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #00C853, #009688); color: #FFF;">당첨자 명단 일괄 업로드</button>
                         </form>

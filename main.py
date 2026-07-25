@@ -446,6 +446,24 @@ async def admin_export_coupons_csv(request: Request):
         headers={"Content-Disposition": "attachment; filename=coupon_pool_export.csv"}
     )
 
+@app.get("/admin/sample-coupons-csv")
+async def admin_sample_coupons_csv(request: Request):
+    sample_content = "coupon_code\nGIFT-CHZZK-SAMPLE-001\nGIFT-CHZZK-SAMPLE-002\nGIFT-CHZZK-SAMPLE-003\n"
+    return Response(
+        content=sample_content.encode('utf-8-sig'),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_coupons_template.csv"}
+    )
+
+@app.get("/admin/sample-winners-csv")
+async def admin_sample_winners_csv(request: Request):
+    sample_content = "channel_id,nickname\n32819034,치즈당첨자1\n11223344556677889900aabbccddeeff,치즈당첨자2\n"
+    return Response(
+        content=sample_content.encode('utf-8-sig'),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_winners_template.csv"}
+    )
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
