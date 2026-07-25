@@ -130,16 +130,27 @@ async def chzzk_callback(request: Request, code: str = None, state: str = None):
             if not access_token:
                 return RedirectResponse(url="/?error=token_failed")
             
-            profile_url = "https://openapi.chzzk.naver.com/open/v1/users/me"
+            # 1차 시도: 네이버아이디로그인 프로필 API (developers.naver.com 앱)
+            profile_url = "https://openapi.naver.com/v1/nid/me"
             headers = {"Authorization": f"Bearer {access_token}"}
             profile_resp = await client.get(profile_url, headers=headers)
             profile_data = profile_resp.json()
             
-            user_info = profile_data.get("content", profile_data)
-            channel_id = user_info.get("channelId", user_info.get("id", ""))
-            nickname = user_info.get("nickname", "치지직시청자")
+            user_info = profile_data.get("response", profile_data.get("content", profile_data))
+            channel_id = str(user_info.get("id", user_info.get("channelId", "")))
+            nickname = user_info.get("nickname", user_info.get("name", "치지직시청자"))
+            
+            # 2차 시도: 치지직 전용 오픈 API 프로필 (chzzk.naver.com 앱)
+            if not channel_id:
+                chzzk_profile_url = "https://openapi.chzzk.naver.com/open/v1/users/me"
+                chzzk_resp = await client.get(chzzk_profile_url, headers=headers)
+                chzzk_data = chzzk_resp.json()
+                user_info = chzzk_data.get("content", chzzk_data)
+                channel_id = str(user_info.get("channelId", user_info.get("id", "")))
+                nickname = user_info.get("nickname", "치지직시청자")
             
             if not channel_id:
+                print(f"Profile Fetch Failed. Data: {profile_data}")
                 return RedirectResponse(url="/?error=profile_failed")
             
             request.session["user"] = {
