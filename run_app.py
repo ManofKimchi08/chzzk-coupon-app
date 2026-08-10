@@ -21,8 +21,23 @@ def start_tunnel():
 
     if os.path.exists(cloudflared_path):
         try:
-            print("🚀 Cloudflare 외부 접속 터널을 자동으로 시작합니다...")
-            cmd = [cloudflared_path, "tunnel", "--url", "http://localhost:8000", "--metrics", "127.0.0.1:20241"]
+            token = os.getenv("CLOUDFLARE_TUNNEL_TOKEN", "").strip()
+            if not token:
+                env_file = os.path.join(exec_dir, ".env")
+                if os.path.exists(env_file):
+                    with open(env_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.startswith("CLOUDFLARE_TUNNEL_TOKEN="):
+                                token = line.split("=", 1)[1].strip()
+                                break
+            
+            if token:
+                print("🚀 Cloudflare [고정 터널 (Named Tunnel)]을 자동으로 시작합니다...")
+                cmd = [cloudflared_path, "tunnel", "run", "--token", token]
+            else:
+                print("🚀 Cloudflare [임시 터널 (Quick Tunnel)]을 자동으로 시작합니다...")
+                cmd = [cloudflared_path, "tunnel", "--url", "http://localhost:8000", "--metrics", "127.0.0.1:20241"]
+
             creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0
             subprocess.Popen(
                 cmd,
