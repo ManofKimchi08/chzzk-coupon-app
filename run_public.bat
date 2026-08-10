@@ -30,11 +30,10 @@ if not exist "cloudflared.exe" (
 echo.
 echo 3. 외부 접속용 HTTPS 전용 주소(trycloudflare.com)를 생성합니다...
 echo -----------------------------------------------------------------
-echo 💡 아래 화면에 출력되는 https://xxxx.trycloudflare.com 주소를 복사하여
-echo    1) 네이버 개발자 센터 Callback URL 및 서비스 URL에 등록하고
-echo    2) 시청자들에게 이벤트 수령 주소로 공유해 주세요!
+echo 💡 웹 브라우저 관리자 대시보드(http://localhost:8000/admin)에 접속하시면
+echo    생성된 외부 접속 주소(https://...)를 1초 만에 확인하고 복사할 수 있습니다!
 echo -----------------------------------------------------------------
 echo.
 
-cloudflared.exe tunnel --url http://localhost:8000
+cloudflared.exe tunnel --url http://localhost:8000 --metrics 127.0.0.1:20241
 pause

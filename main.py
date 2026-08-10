@@ -185,6 +185,19 @@ async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/")
 
+def get_active_tunnel_url() -> str:
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.urlopen("http://127.0.0.1:20241/quicktunnel", timeout=0.4)
+        data = json.loads(req.read().decode("utf-8"))
+        hostname = data.get("hostname")
+        if hostname:
+            return f"https://{hostname}"
+    except Exception:
+        pass
+    return ""
+
 # --- 진행자(Host/Admin) 관리자 기능 ---
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, msg: str = None, error_msg: str = None, search: str = None, winner_search: str = None):
@@ -194,6 +207,7 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
     allowed_winners = database.get_allowed_winners(search_query=winner_search) if is_admin else []
     allow_all = database.is_allow_all_users() if is_admin else False
     event_notice = database.get_event_notice() if is_admin else ""
+    tunnel_url = get_active_tunnel_url() if is_admin else ""
     
     return templates.TemplateResponse(
         request,
@@ -211,6 +225,7 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "chzzk_client_secret": CHZZK_CLIENT_SECRET,
             "chzzk_redirect_uri": CHZZK_REDIRECT_URI,
             "enable_mock_login": ENABLE_MOCK_LOGIN,
+            "tunnel_url": tunnel_url,
             "msg": msg,
             "error_msg": error_msg
         }

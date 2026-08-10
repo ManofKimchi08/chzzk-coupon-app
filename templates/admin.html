@@ -71,7 +71,8 @@
 
                 <script>
                     function copyViewerShareText() {
-                        const origin = window.location.origin;
+                        const liveUrl = document.getElementById('live-tunnel-url');
+                        const origin = liveUrl ? liveUrl.innerText.trim() : window.location.origin;
                         const text = `🎁 [치지직 선물 쿠폰 무작위 수령 안내]\n아래 주소로 들어오셔서 치지직 로그인 본인 인증 후 쿠폰을 수령하세요!\n👉 ${origin}`;
                         navigator.clipboard.writeText(text).then(() => {
                             alert("시청자 공유용 수령 안내문과 링크가 클립보드에 복사되었습니다!\n\n방송 채팅창이나 커뮤니티에 붙여넣어 공유하세요.");
@@ -79,7 +80,54 @@
                             alert(`공유 링크: ${origin}`);
                         });
                     }
+                    function copyTunnelText(text) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            alert("클립보드에 복사되었습니다!\n\n" + text);
+                        });
+                    }
+                    function applyRedirectUri(uri) {
+                        const input = document.querySelector('input[name="redirect_uri"]');
+                        if (input) {
+                            input.value = uri;
+                            alert("Redirect URI 입력란에 자동 적용되었습니다!\n\n하단의 [💾 API 설정 저장] 버튼을 누르시면 즉시 완료됩니다.");
+                        }
+                    }
                 </script>
+
+                <!-- 🌐 실시간 외부 시청자 공개 접속 주소 배너 -->
+                {% if tunnel_url %}
+                    <div style="background: rgba(0, 255, 163, 0.08); border: 2px solid var(--chzzk-mint); padding: 18px 22px; border-radius: var(--radius-md); margin-bottom: 22px; box-shadow: 0 0 20px rgba(0, 255, 163, 0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                            <div>
+                                <div style="font-size: 0.8rem; color: var(--chzzk-mint); font-weight: bold; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                                    <span style="display: inline-block; width: 8px; height: 8px; background: var(--chzzk-mint); border-radius: 50%; box-shadow: 0 0 8px var(--chzzk-mint);"></span>
+                                    실시간 외부 공개 접속 주소 (시청자 공유용)
+                                </div>
+                                <div id="live-tunnel-url" style="font-size: 1.4rem; font-weight: 800; color: #FFF; margin-top: 4px; font-family: monospace; letter-spacing: -0.5px;">
+                                    {{ tunnel_url }}
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" onclick="copyTunnelText('{{ tunnel_url }}')" class="btn-primary" style="background: var(--chzzk-mint); color: #000; font-weight: bold; font-size: 0.85rem; padding: 8px 14px;">
+                                    📋 시청자용 주소 복사
+                                </button>
+                                <button type="button" onclick="copyTunnelText('{{ tunnel_url }}/auth/chzzk/callback')" class="btn-copy" style="font-size: 0.85rem; padding: 8px 14px;">
+                                    🔑 Callback URL 복사
+                                </button>
+                                <button type="button" onclick="applyRedirectUri('{{ tunnel_url }}/auth/chzzk/callback')" class="btn-copy" style="background: rgba(255, 184, 0, 0.2); border-color: var(--accent-yellow); color: #FFF; font-size: 0.85rem; padding: 8px 14px;">
+                                    ⚡ Redirect URI 자동 입력
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed var(--border-color); padding: 12px 18px; border-radius: var(--radius-md); margin-bottom: 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">
+                            💡 <strong>외부 시청자 접속 주소</strong>: <code>run_public.bat</code> 파일이 실행되면 생성된 외부 접속 주소(https://...)가 여기에 1초 만에 자동으로 표시됩니다!
+                        </div>
+                        <span style="font-size: 0.75rem; background: rgba(255, 255, 255, 0.05); padding: 4px 10px; border-radius: 4px; color: var(--text-muted);">현재 로컬 가동 중 (localhost:8000)</span>
+                    </div>
+                {% endif %}
 
                 {% if msg %}
                     <div class="alert-card warning" style="padding: 12px; margin-bottom: 20px; font-size: 0.85rem; color: var(--chzzk-mint); background: rgba(0, 255, 163, 0.1); border-color: var(--chzzk-mint);">
