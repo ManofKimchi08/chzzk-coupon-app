@@ -153,27 +153,8 @@
                     </div>
                 </div>
 
-                <!-- 이벤트 설정, 공지 문구, 비밀번호 변경 3열 그리드 -->
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
-                    <!-- 수령 범위 설정 -->
-                    <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md);">
-                        <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 6px;">⚙️ 수령 대상자 범위 설정</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
-                            현재: 
-                            {% if allow_all %}
-                                <strong style="color: var(--chzzk-mint);">[모든 유저 허용]</strong>
-                            {% else %}
-                                <strong style="color: var(--accent-yellow);">[지정 명단 제한]</strong>
-                            {% endif %}
-                        </div>
-                        <form action="/admin/config/allow-all" method="POST">
-                            <input type="hidden" name="allow_all" value="{{ 'false' if allow_all else 'true' }}">
-                            <button type="submit" class="btn-copy" style="font-size: 0.8rem; padding: 6px 12px; width: 100%;">
-                                {% if allow_all %}지정 명단 제한으로 변경{% else %}모든 유저 수령 허용으로 변경{% endif %}
-                            </button>
-                        </form>
-                    </div>
-
+                <!-- 공지 문구 및 비밀번호 변경 2열 그리드 -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px;">
                     <!-- 메인 공지 문구 수정 -->
                     <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md);">
                         <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 6px;">📢 시청자 페이지 공지 수정</div>

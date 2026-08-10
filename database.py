@@ -132,10 +132,7 @@ def set_admin_password(new_pass: str):
         conn.commit()
 
 
-# --- 당첨 대상자 관리 ---
 def is_allowed_winner(channel_id: str) -> bool:
-    if is_allow_all_users():
-        return True
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM allowed_winners WHERE channel_id = ?", (channel_id,))

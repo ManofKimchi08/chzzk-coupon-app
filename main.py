@@ -205,7 +205,6 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
     coupons = database.get_all_coupons(search_query=search) if is_admin else []
     stats = database.get_coupon_pool_stats() if is_admin else {}
     allowed_winners = database.get_allowed_winners(search_query=winner_search) if is_admin else []
-    allow_all = database.is_allow_all_users() if is_admin else False
     event_notice = database.get_event_notice() if is_admin else ""
     tunnel_url = get_active_tunnel_url() if is_admin else ""
     
@@ -217,7 +216,6 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "coupons": coupons,
             "stats": stats,
             "allowed_winners": allowed_winners,
-            "allow_all": allow_all,
             "event_notice": event_notice,
             "search_query": search or "",
             "winner_search_query": winner_search or "",
