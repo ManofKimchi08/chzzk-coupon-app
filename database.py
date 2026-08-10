@@ -165,7 +165,7 @@ import re
 
 def import_allowed_winners_csv(df: pd.DataFrame) -> int:
     seq_blacklist = {'no', 'num', 'number', 'index', 'idx', 'seq', 'sequence', '순번', '번호', '연번', '순서', 'count', 'n'}
-    high_channel_keys = ['channel_id', 'channelid', 'channel_hash', 'chzzk_id', 'chzzk_channel_id', '채널id', '채널아이디', '채널_id', '채널고유id', '고유id', '고유아이디']
+    high_channel_keys = ['channel_id', 'channelid', 'channel_hash', 'chzzk_id', 'chzzk_channel_id', '채널id', '채널아이디', '채널_id', '채널고유id', '고유id', '고유아이디', '고유식별자(uid)', '고유식별자', 'uid', 'uid식별자']
     low_channel_keys = ['channel', 'user_id', 'userid', '유저id', '유저아이디']
     nick_keys = ['nickname', 'nick', '닉네임', '이름', 'user', 'username', '시청자', '시청자명', '유저명', '당첨자', '당첨자명']
 
