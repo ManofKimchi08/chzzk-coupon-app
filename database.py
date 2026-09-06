@@ -14,13 +14,17 @@ else:
     DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "coupons.db")
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
     with get_connection() as conn:
         cursor = conn.cursor()
+        
+        # 성능 및 동시성 튜닝: WAL 모드 및 busy_timeout 적용
+        cursor.execute("PRAGMA journal_mode = WAL;")
+        cursor.execute("PRAGMA busy_timeout = 30000;")
         
         # 1. 쿠폰 풀 테이블
         cursor.execute("""
@@ -33,7 +37,12 @@ def init_db():
             )
         """)
         
-        # 2. 당첨 대상자 명단 테이블
+        # 2. 쿠폰 풀 할당 채널 인덱스 (조회 및 JOIN 성능 극대화)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_coupon_assigned ON coupon_pool(assigned_channel_id);
+        """)
+        
+        # 3. 당첨 대상자 명단 테이블
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS allowed_winners (
                 channel_id TEXT PRIMARY KEY,
@@ -41,14 +50,13 @@ def init_db():
             )
         """)
         
-        # 3. 설정을 위한 옵션 테이블
+        # 4. 설정을 위한 옵션 테이블
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
         """)
-        cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('allow_all_users', 'false')")
         cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('event_notice', '치지직 본인 인증으로 1회성 선물 쿠폰 코드를 무작위 수령하세요.')")
         cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('admin_password', 'streamer123!')")
         
@@ -87,20 +95,6 @@ def sync_initial_seed_data():
         conn.commit()
 
 # --- 설정 및 공지사항 관리 ---
-def is_allow_all_users() -> bool:
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM config WHERE key = 'allow_all_users'")
-        row = cursor.fetchone()
-        return row and row[0].lower() == 'true'
-
-def set_allow_all_users(allow: bool):
-    val_str = 'true' if allow else 'false'
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('allow_all_users', ?)", (val_str,))
-        conn.commit()
-
 def get_event_notice() -> str:
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -109,10 +103,10 @@ def get_event_notice() -> str:
         return row[0] if row else "치지직 본인 인증으로 1회성 선물 쿠폰 코드를 무작위 수령하세요."
 
 def set_event_notice(notice: str):
-    sanitized_notice = html.escape(notice.strip())
+    clean_notice = notice.strip()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('event_notice', ?)", (sanitized_notice,))
+        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('event_notice', ?)", (clean_notice,))
         conn.commit()
 
 def get_admin_password() -> str:
@@ -139,8 +133,8 @@ def is_allowed_winner(channel_id: str) -> bool:
         return cursor.fetchone() is not None
 
 def add_allowed_winner(channel_id: str, nickname: str):
-    clean_id = html.escape(channel_id.strip())
-    clean_nick = html.escape(nickname.strip())
+    clean_id = channel_id.strip()
+    clean_nick = nickname.strip() if nickname and nickname.strip() else "치지직시청자"
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO allowed_winners (channel_id, nickname) VALUES (?, ?)", (clean_id, clean_nick))
@@ -256,14 +250,14 @@ def import_allowed_winners_csv(df: pd.DataFrame) -> int:
             val = str(row[channel_col]).strip() if pd.notna(row[channel_col]) else ""
             if not val or val.lower() == 'nan':
                 continue
-            c_id = html.escape(val)
+            c_id = val
             
             nick_val = ""
             if nickname_col and pd.notna(row[nickname_col]):
                 nick_val = str(row[nickname_col]).strip()
             if not nick_val or nick_val.lower() == 'nan':
                 nick_val = "치지직시청자"
-            nick = html.escape(nick_val)
+            nick = nick_val
             
             cursor.execute("INSERT OR REPLACE INTO allowed_winners (channel_id, nickname) VALUES (?, ?)", (c_id, nick))
             count += 1
@@ -308,7 +302,7 @@ def clear_all_allowed_winners() -> int:
 
 # --- 쿠폰 풀 관리 및 무작위 할당 ---
 def add_coupon_to_pool(coupon_code: str):
-    clean_code = html.escape(coupon_code.strip())
+    clean_code = coupon_code.strip()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (clean_code,))
@@ -336,7 +330,7 @@ def import_coupons_csv(df: pd.DataFrame) -> int:
             val = str(row[coupon_col]).strip() if pd.notna(row[coupon_col]) else ""
             if not val or val.lower() == 'nan':
                 continue
-            code = html.escape(val)
+            code = val
             cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (code,))
             count += 1
         conn.commit()
@@ -353,6 +347,7 @@ def claim_random_coupon(channel_id: str, nickname: str) -> Dict[str, Any]:
         cursor.execute("SELECT * FROM coupon_pool WHERE assigned_channel_id = ?", (channel_id,))
         existing = cursor.fetchone()
         if existing:
+            conn.rollback()
             row_dict = dict(existing)
             return {
                 "success": False,
@@ -366,6 +361,7 @@ def claim_random_coupon(channel_id: str, nickname: str) -> Dict[str, Any]:
         available = cursor.fetchone()
         
         if not available:
+            conn.rollback()
             return {"success": False, "code": "NO_COUPONS", "message": "준비된 모든 선물 쿠폰이 소진되었습니다."}
         
         coupon_id = available["id"]

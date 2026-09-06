@@ -1,6 +1,7 @@
 import os
 import io
 import time
+import asyncio
 import secrets
 from urllib.parse import urlencode
 import httpx
@@ -36,6 +37,7 @@ ADMIN_CHANNEL_ID = os.getenv("ADMIN_CHANNEL_ID", "streamer_channel_123")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "streamer123!")
 SECRET_KEY = os.getenv("SECRET_KEY", "chzzk_secret_key_2026")
 ENABLE_MOCK_LOGIN = os.getenv("ENABLE_MOCK_LOGIN", "true").lower() == "true"
+CLOUDFLARE_TUNNEL_TOKEN = os.getenv("CLOUDFLARE_TUNNEL_TOKEN", "")
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB 파일 업로드 제한
 ADMIN_CHANNEL_IDS = [x.strip() for x in ADMIN_CHANNEL_ID.split(",") if x.strip()]
@@ -54,7 +56,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 # 세션 미들웨어 추가
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, same_site="lax")
 
 # 정적 파일 및 템플릿 설정
 static_dir = os.path.join(BASE_DIR, "static")
@@ -63,18 +65,71 @@ templates_dir = os.path.join(BASE_DIR, "templates")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
 
+# --- CSRF 보안 유틸리티 함수 ---
+def get_csrf_token(request: Request) -> str:
+    token = request.session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["csrf_token"] = token
+    return token
+
+def check_csrf(request: Request, csrf_token: str) -> bool:
+    session_token = request.session.get("csrf_token")
+    if not session_token or not csrf_token:
+        return False
+    return secrets.compare_digest(session_token, csrf_token)
+
+# --- 안전한 .env 갱신 함수 (기존 토큰 및 주석 100% 보존) ---
+def update_env_file(updates: dict) -> None:
+    env_path = os.path.join(EXEC_DIR, ".env")
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    
+    updated_keys = set()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}\n")
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+    
+    for key, val in updates.items():
+        if key not in updated_keys:
+            if new_lines and not new_lines[-1].endswith("\n"):
+                new_lines.append("\n")
+            new_lines.append(f"{key}={val}\n")
+            
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
 @app.on_event("startup")
 def on_startup():
     database.init_db()
 
 @app.get("/", response_class=HTMLResponse)
-async def index_page(request: Request):
+async def index_page(request: Request, error: str = None):
     user = request.session.get("user")
     claim_result = None
     if user and "channel_id" in user:
         claim_result = database.claim_random_coupon(user["channel_id"], user.get("nickname", "시청자"))
         
     event_notice = database.get_event_notice()
+    
+    error_messages = {
+        "csrf_validation_failed": "보안 인증(CSRF)에 실패했습니다. 다시 시도해 주세요.",
+        "profile_failed": "치지직 프로필 정보를 가져오는 데 실패했습니다. 잠시 후 다시 시도해 주세요.",
+        "token_failed": "치지직 로그인 토큰 발급에 실패했습니다.",
+        "no_code": "인증 코드가 전달되지 않았습니다.",
+        "exception": "로그인 처리 중 일시적인 오류가 발생했습니다.",
+        "mock_login_disabled": "현재 시뮬레이션 테스트 로그인이 비활성화되어 있습니다."
+    }
+    oauth_error = error_messages.get(error) if error else None
         
     return templates.TemplateResponse(
         request,
@@ -82,7 +137,8 @@ async def index_page(request: Request):
         {
             "user": user,
             "claim_result": claim_result,
-            "event_notice": event_notice
+            "event_notice": event_notice,
+            "oauth_error": oauth_error
         }
     )
 
@@ -189,7 +245,7 @@ def get_active_tunnel_url() -> str:
     try:
         import urllib.request
         import json
-        req = urllib.request.urlopen("http://127.0.0.1:20241/quicktunnel", timeout=0.4)
+        req = urllib.request.urlopen("http://127.0.0.1:20241/quicktunnel", timeout=0.15)
         data = json.loads(req.read().decode("utf-8"))
         hostname = data.get("hostname")
         if hostname:
@@ -207,6 +263,7 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
     allowed_winners = database.get_allowed_winners(search_query=winner_search) if is_admin else []
     event_notice = database.get_event_notice() if is_admin else ""
     tunnel_url = get_active_tunnel_url() if is_admin else ""
+    csrf_token = get_csrf_token(request) if is_admin else ""
     
     return templates.TemplateResponse(
         request,
@@ -223,7 +280,9 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "chzzk_client_secret": CHZZK_CLIENT_SECRET,
             "chzzk_redirect_uri": CHZZK_REDIRECT_URI,
             "enable_mock_login": ENABLE_MOCK_LOGIN,
+            "cloudflare_tunnel_token": CLOUDFLARE_TUNNEL_TOKEN,
             "tunnel_url": tunnel_url,
+            "csrf_token": csrf_token,
             "msg": msg,
             "error_msg": error_msg
         }
@@ -232,12 +291,13 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
 @app.post("/admin/login")
 async def admin_login(request: Request, password: str = Form(...)):
     current_pass = database.get_admin_password()
-    if password == current_pass:
+    if secrets.compare_digest(password, current_pass):
         request.session["is_admin"] = True
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
         return RedirectResponse(url="/admin", status_code=303)
     
-    # 비밀번호 실패 시 지연 처리 (Brute-Force 방어)
-    time.sleep(1.0)
+    # 비밀번호 실패 시 지연 처리 (Brute-Force 방어 - 비동기 이벤트 루프 비차단)
+    await asyncio.sleep(1.0)
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -246,7 +306,6 @@ async def admin_login(request: Request, password: str = Form(...)):
             "coupons": [],
             "stats": {},
             "allowed_winners": [],
-            "allow_all": False,
             "event_notice": "",
             "search_query": "",
             "error_msg": "관리자 비밀번호가 올바르지 않습니다."
@@ -255,37 +314,23 @@ async def admin_login(request: Request, password: str = Form(...)):
 
 @app.get("/admin/logout")
 async def admin_logout(request: Request):
-    request.session["is_admin"] = False
+    request.session.clear()
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/change-password")
-async def admin_change_password(request: Request, new_password: str = Form(...)):
+async def admin_change_password(request: Request, new_password: str = Form(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     if len(new_password.strip()) < 4:
         return RedirectResponse(url="/admin?error_msg=비밀번호는 최소 4자리 이상이어야 합니다.", status_code=303)
+    
     database.set_admin_password(new_password)
     
     global ADMIN_PASSWORD
     ADMIN_PASSWORD = new_password
-    env_path = os.path.join(EXEC_DIR, ".env")
-    env_content = f"""# 치지직 Open API Client Credentials
-CHZZK_CLIENT_ID={CHZZK_CLIENT_ID}
-CHZZK_CLIENT_SECRET={CHZZK_CLIENT_SECRET}
-CHZZK_REDIRECT_URI={CHZZK_REDIRECT_URI}
-
-# 시뮬레이션(Mock) 테스트 로그인 활성화 여부
-ENABLE_MOCK_LOGIN={'true' if ENABLE_MOCK_LOGIN else 'false'}
-
-# 관리자(진행자) 설정
-ADMIN_CHANNEL_ID={ADMIN_CHANNEL_ID}
-ADMIN_PASSWORD={ADMIN_PASSWORD}
-
-# 세션 비밀키
-SECRET_KEY={SECRET_KEY}
-"""
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.write(env_content)
+    update_env_file({"ADMIN_PASSWORD": ADMIN_PASSWORD})
         
     return RedirectResponse(url="/admin?msg=관리자 비밀번호가 성공적으로 변경되었습니다.", status_code=303)
 
@@ -295,66 +340,58 @@ async def admin_update_env(
     client_id: str = Form(""),
     client_secret: str = Form(""),
     redirect_uri: str = Form(""),
-    enable_mock_login: bool = Form(False)
+    enable_mock_login: bool = Form(False),
+    tunnel_token: str = Form(""),
+    csrf_token: str = Form("")
 ):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
         
-    global CHZZK_CLIENT_ID, CHZZK_CLIENT_SECRET, CHZZK_REDIRECT_URI, ENABLE_MOCK_LOGIN
+    global CHZZK_CLIENT_ID, CHZZK_CLIENT_SECRET, CHZZK_REDIRECT_URI, ENABLE_MOCK_LOGIN, CLOUDFLARE_TUNNEL_TOKEN
     
     CHZZK_CLIENT_ID = client_id.strip()
     CHZZK_CLIENT_SECRET = client_secret.strip()
     CHZZK_REDIRECT_URI = redirect_uri.strip()
     ENABLE_MOCK_LOGIN = enable_mock_login
+    if tunnel_token.strip():
+        CLOUDFLARE_TUNNEL_TOKEN = tunnel_token.strip()
     
-    env_path = os.path.join(EXEC_DIR, ".env")
-    env_content = f"""# 치지직 Open API Client Credentials
-CHZZK_CLIENT_ID={CHZZK_CLIENT_ID}
-CHZZK_CLIENT_SECRET={CHZZK_CLIENT_SECRET}
-CHZZK_REDIRECT_URI={CHZZK_REDIRECT_URI}
-
-# 시뮬레이션(Mock) 테스트 로그인 활성화 여부
-ENABLE_MOCK_LOGIN={'true' if ENABLE_MOCK_LOGIN else 'false'}
-
-# 관리자(진행자) 설정
-ADMIN_CHANNEL_ID={ADMIN_CHANNEL_ID}
-ADMIN_PASSWORD={ADMIN_PASSWORD}
-
-# 세션 비밀키
-SECRET_KEY={SECRET_KEY}
-"""
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.write(env_content)
+    update_env_file({
+        "CHZZK_CLIENT_ID": CHZZK_CLIENT_ID,
+        "CHZZK_CLIENT_SECRET": CHZZK_CLIENT_SECRET,
+        "CHZZK_REDIRECT_URI": CHZZK_REDIRECT_URI,
+        "ENABLE_MOCK_LOGIN": 'true' if ENABLE_MOCK_LOGIN else 'false',
+        "CLOUDFLARE_TUNNEL_TOKEN": CLOUDFLARE_TUNNEL_TOKEN
+    })
         
-    return RedirectResponse(url="/admin?msg=네이버 치지직 API 키 및 접속 설정이 성공적으로 저장되었습니다!", status_code=303)
+    return RedirectResponse(url="/admin?msg=네이버 치지직 API 키 및 서버 설정이 안전하게 저장되었습니다!", status_code=303)
 
 @app.post("/admin/notice")
-async def admin_update_notice(request: Request, event_notice: str = Form(...)):
+async def admin_update_notice(request: Request, event_notice: str = Form(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     database.set_event_notice(event_notice)
     return RedirectResponse(url="/admin?msg=시청자 페이지 이벤트 공지 문구가 갱신되었습니다.", status_code=303)
 
-
-@app.post("/admin/config/allow-all")
-async def admin_config_allow_all(request: Request, allow_all: bool = Form(False)):
-    if not request.session.get("is_admin"):
-        return RedirectResponse(url="/admin", status_code=303)
-    database.set_allow_all_users(allow_all)
-    status_str = "모든 치지직 유저 수령 허용 모드" if allow_all else "지정 당첨자 전용 모드"
-    return RedirectResponse(url=f"/admin?msg=수령 설정이 변경되었습니다: [{status_str}]", status_code=303)
-
 @app.post("/admin/add-coupon")
-async def admin_add_coupon(request: Request, coupon_code: str = Form(...)):
+async def admin_add_coupon(request: Request, coupon_code: str = Form(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     database.add_coupon_to_pool(coupon_code)
     return RedirectResponse(url="/admin?msg=쿠폰 코드가 쿠폰 풀에 추가되었습니다.", status_code=303)
 
 @app.post("/admin/upload-coupons-csv")
-async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...)):
+async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     try:
         contents = await file.read()
         if len(contents) > MAX_FILE_SIZE:
@@ -370,16 +407,20 @@ async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...
         return RedirectResponse(url=f"/admin?error_msg=쿠폰 CSV 업로드 실패: {str(e)}", status_code=303)
 
 @app.post("/admin/add-winner")
-async def admin_add_winner(request: Request, channel_id: str = Form(...), nickname: str = Form("치지직시청자")):
+async def admin_add_winner(request: Request, channel_id: str = Form(...), nickname: str = Form("치지직시청자"), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     database.add_allowed_winner(channel_id, nickname)
     return RedirectResponse(url="/admin?msg=당첨 대상자가 명단에 추가되었습니다.", status_code=303)
 
 @app.post("/admin/upload-winners-csv")
-async def admin_upload_winners_csv(request: Request, file: UploadFile = File(...)):
+async def admin_upload_winners_csv(request: Request, file: UploadFile = File(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     try:
         contents = await file.read()
         if len(contents) > MAX_FILE_SIZE:
@@ -395,16 +436,20 @@ async def admin_upload_winners_csv(request: Request, file: UploadFile = File(...
         return RedirectResponse(url=f"/admin?error_msg=당첨자 CSV 업로드 실패: {str(e)}", status_code=303)
 
 @app.post("/admin/delete-winner")
-async def admin_delete_winner(request: Request, channel_id: str = Form(...)):
+async def admin_delete_winner(request: Request, channel_id: str = Form(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     database.delete_allowed_winner(channel_id)
     return RedirectResponse(url="/admin?msg=당첨 대상자가 삭제되었습니다.", status_code=303)
 
 @app.post("/admin/clear-winners")
-async def admin_clear_winners(request: Request):
+async def admin_clear_winners(request: Request, csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     count = database.clear_all_allowed_winners()
     return RedirectResponse(url=f"/admin?msg=당첨 대상자 명단 {count}명이 모두 삭제되었습니다.", status_code=303)
 
@@ -424,23 +469,29 @@ async def admin_export_winners_csv(request: Request):
     )
 
 @app.post("/admin/reset-coupon")
-async def admin_reset_coupon(request: Request, coupon_id: int = Form(...)):
+async def admin_reset_coupon(request: Request, coupon_id: int = Form(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     database.reset_coupon_assignment(coupon_id)
     return RedirectResponse(url="/admin?msg=쿠폰 발급 상태가 리셋되어 다시 사용 가능해졌습니다.", status_code=303)
 
 @app.post("/admin/delete-coupon")
-async def admin_delete_coupon(request: Request, coupon_id: int = Form(...)):
+async def admin_delete_coupon(request: Request, coupon_id: int = Form(...), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     database.delete_coupon_from_pool(coupon_id)
     return RedirectResponse(url="/admin?msg=쿠폰이 삭제되었습니다.", status_code=303)
 
 @app.post("/admin/clear-coupons")
-async def admin_clear_coupons(request: Request):
+async def admin_clear_coupons(request: Request, csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
+    if not check_csrf(request, csrf_token):
+        return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
     count = database.clear_all_coupons()
     return RedirectResponse(url=f"/admin?msg=쿠폰 풀의 모든 선물 쿠폰 {count}개가 일괄 삭제되었습니다.", status_code=303)
 

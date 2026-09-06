@@ -159,6 +159,7 @@
                     <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md);">
                         <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 6px;">📢 시청자 페이지 공지 수정</div>
                         <form action="/admin/notice" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group" style="margin-bottom: 8px;">
                                 <input type="text" name="event_notice" class="form-input" value="{{ event_notice }}" required style="font-size: 0.8rem; padding: 6px 10px;">
                             </div>
@@ -170,6 +171,7 @@
                     <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md);">
                         <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 6px;">🔒 관리자 비밀번호 변경</div>
                         <form action="/admin/change-password" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group" style="margin-bottom: 8px;">
                                 <input type="password" name="new_password" class="form-input" placeholder="새 비밀번호 입력" required style="font-size: 0.8rem; padding: 6px 10px;">
                             </div>
@@ -183,11 +185,12 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div>
                             <h3 style="font-size: 1.05rem; margin: 0; color: var(--chzzk-mint); display: inline-block;">🔑 네이버 치지직 API 키 및 서버 설정</h3>
-                            <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">(개발자 센터에서 발급받은 키를 웹 UI에서 간편하게 입력·수정합니다)</span>
+                            <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">(개발자 센터 API 키 및 Cloudflare 고정 터널 설정을 안전하게 관리합니다)</span>
                         </div>
                     </div>
 
-                    <form action="/admin/update-env" method="POST" style="display: grid; grid-template-columns: 1fr 1fr 1.2fr 140px auto; gap: 10px; align-items: end;">
+                    <form action="/admin/update-env" method="POST" style="display: grid; grid-template-columns: 1fr 1fr 1.1fr 1.1fr 130px auto; gap: 10px; align-items: end;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Client ID (클라이언트 아이디)</label>
                             <input type="text" name="client_id" class="form-input" value="{{ chzzk_client_id }}" placeholder="발급받은 Client ID" style="font-size: 0.8rem; padding: 6px 10px;">
@@ -201,14 +204,18 @@
                             <input type="text" name="redirect_uri" class="form-input" value="{{ chzzk_redirect_uri }}" placeholder="http://localhost:8000/auth/chzzk/callback" style="font-size: 0.8rem; padding: 6px 10px;">
                         </div>
                         <div>
-                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">테스트 로그인 허용</label>
+                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Cloudflare 고정 터널 토큰</label>
+                            <input type="password" name="tunnel_token" class="form-input" value="{{ cloudflare_tunnel_token }}" placeholder="고정 터널 토큰" style="font-size: 0.8rem; padding: 6px 10px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">테스트 로그인</label>
                             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; height: 31px; cursor: pointer; color: var(--text-color);">
                                 <input type="checkbox" name="enable_mock_login" value="true" {% if enable_mock_login %}checked{% endif %}>
-                                <span>테스트모드 켜기</span>
+                                <span>테스트모드</span>
                             </label>
                         </div>
                         <div>
-                            <button type="submit" class="btn-primary" style="font-size: 0.88rem; padding: 7px 16px; width: 100%;">💾 API 설정 저장</button>
+                            <button type="submit" class="btn-primary" style="font-size: 0.88rem; padding: 7px 16px; width: 100%;">💾 설정 저장</button>
                         </div>
                     </form>
                 </div>
@@ -222,6 +229,7 @@
                         <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--chzzk-mint);">🎁 1. 선물 쿠폰 코드 풀 등록</h3>
                         
                         <form action="/admin/add-coupon" method="POST" style="margin-bottom: 20px;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group">
                                 <label for="coupon_code">신규 쿠폰 코드 입력</label>
                                 <input type="text" id="coupon_code" name="coupon_code" class="form-input" placeholder="예: GIFT-CHZZK-POOL-9901" required>
@@ -232,6 +240,7 @@
                         <hr style="border-color: var(--border-color); margin: 15px 0;">
 
                         <form action="/admin/upload-coupons-csv" method="POST" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group">
                                 <label for="coupons_file">쿠폰 목록 CSV 대량 업로드</label>
                                 <input type="file" id="coupons_file" name="file" accept=".csv" class="form-input" required>
@@ -249,6 +258,7 @@
                         <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--chzzk-mint);">👥 2. 당첨 대상자 명단 등록</h3>
                         
                         <form action="/admin/add-winner" method="POST" style="margin-bottom: 20px;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group">
                                 <label for="channel_id">치지직 채널 ID (channelId)</label>
                                 <input type="text" id="channel_id" name="channel_id" class="form-input" placeholder="예: user_12345" required>
@@ -263,6 +273,7 @@
                         <hr style="border-color: var(--border-color); margin: 15px 0;">
 
                         <form action="/admin/upload-winners-csv" method="POST" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group">
                                 <label for="winners_file">당첨자 목록 CSV 일괄 업로드</label>
                                 <input type="file" id="winners_file" name="file" accept=".csv" class="form-input" required>
@@ -289,6 +300,7 @@
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;" onclick="event.stopPropagation();">
                             <form action="/admin/clear-coupons" method="POST" onsubmit="return confirm('정말로 쿠폰 풀의 모든 쿠폰 코드를 삭제하시겠습니까?');" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:6px 12px; border-radius:8px; font-size:0.8rem; cursor:pointer;">🗑️ 전체 쿠폰 삭제</button>
                             </form>
 
@@ -336,11 +348,13 @@
                                                 <div style="display: flex; gap: 6px;">
                                                     {% if c.assigned_channel_id %}
                                                         <form action="/admin/reset-coupon" method="POST" style="display:inline;">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                                             <input type="hidden" name="coupon_id" value="{{ c.id }}">
                                                             <button type="submit" style="background: rgba(255,184,0,0.2); color: var(--accent-yellow); border:1px solid var(--accent-yellow); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">리셋</button>
                                                         </form>
                                                     {% endif %}
                                                     <form action="/admin/delete-coupon" method="POST" style="display:inline;" onsubmit="return confirm('이 쿠폰을 삭제하시겠습니까?');">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                                         <input type="hidden" name="coupon_id" value="{{ c.id }}">
                                                         <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">삭제</button>
                                                     </form>
@@ -380,6 +394,7 @@
                             <a href="/admin/export-winners-csv" class="btn-copy" style="text-decoration: none; font-size: 0.8rem; padding: 6px 12px;">📥 명단 CSV 내보내기</a>
                             
                             <form action="/admin/clear-winners" method="POST" onsubmit="return confirm('정말로 등록된 모든 당첨자 명단을 삭제하시겠습니까?');" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:6px 12px; border-radius:8px; font-size:0.8rem; cursor:pointer;">🗑️ 전체 명단 삭제</button>
                             </form>
 
@@ -428,6 +443,7 @@
                                             <td style="font-size: 0.8rem; color: var(--text-muted);">{{ w.claimed_at or '-' }}</td>
                                             <td>
                                                 <form action="/admin/delete-winner" method="POST" style="display:inline;" onsubmit="return confirm('이 당첨자를 명단에서 삭제하시겠습니까?');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                                     <input type="hidden" name="channel_id" value="{{ w.channel_id }}">
                                                     <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">삭제</button>
                                                 </form>
