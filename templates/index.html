@@ -38,6 +38,8 @@
                     <div class="alert-desc">{{ oauth_error }}</div>
                 </div>
             {% endif %}
+
+            {% if not user %}
                 <!-- 로그인 전 화면 -->
                 <div style="text-align: center; margin-top: 30px;">
                     <a href="/auth/chzzk/login" class="btn-chzzk-login">

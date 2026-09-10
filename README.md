@@ -25,6 +25,18 @@
 
 ---
 
+## 📸 주요 서비스 화면 미리보기
+
+| 1. 시청자 첫 접속 화면 (로그인 전) | 2. 당첨 선물 쿠폰 수령 완료 화면 |
+| :---: | :---: |
+| ![시청자 첫 접속 화면](docs/screenshots/01_viewer_page.png) | ![쿠폰 수령 완료 화면](docs/screenshots/02_coupon_claimed.png) |
+
+| 3. 진행자 무작위 쿠폰 풀 관리 대시보드 | 4. 미당첨자 접근 제한 안내 화면 |
+| :---: | :---: |
+| ![진행자 관리 대시보드](docs/screenshots/03_admin_dashboard.png) | ![미당첨자 접근 제한](docs/screenshots/04_unauthorized_user.png) |
+
+---
+
 ## 📂 폴더 및 파일 구조
 
 ```
