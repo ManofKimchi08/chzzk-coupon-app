@@ -142,13 +142,19 @@ def add_allowed_winner(channel_id: str, nickname: str):
 
 def read_csv_robustly(contents: bytes) -> pd.DataFrame:
     """UTF-8 BOM, CP949, EUC-KR 등 한국어 엑셀 CSV 인코딩 및 구분자(쉼표, 세미콜론, 탭)를 자동 감지하여 읽는 함수"""
+    if not contents or not contents.strip():
+        raise ValueError("업로드된 CSV 파일의 내용이 비어 있습니다.")
+
     encodings = ['utf-8-sig', 'cp949', 'euc-kr', 'utf-8', 'latin-1']
     for enc in encodings:
         try:
             text = contents.decode(enc)
-            first_line = text.splitlines()[0] if text.splitlines() else ""
+            non_empty_lines = [line for line in text.splitlines() if line.strip()]
+            if not non_empty_lines:
+                raise ValueError("업로드된 CSV 파일에 유효한 데이터가 없습니다.")
+            first_line = non_empty_lines[0]
             sep = ';' if ';' in first_line and ',' not in first_line else ('\t' if '\t' in first_line and ',' not in first_line else ',')
-            df = pd.read_csv(io.StringIO(text), sep=sep)
+            df = pd.read_csv(io.StringIO(text), sep=sep, on_bad_lines='skip')
             df.columns = [str(c).strip().lstrip('\ufeff') for c in df.columns]
             return df
         except Exception:
@@ -158,6 +164,8 @@ def read_csv_robustly(contents: bytes) -> pd.DataFrame:
 import re
 
 def import_allowed_winners_csv(df: pd.DataFrame) -> int:
+    if df.empty or len(df.columns) == 0:
+        return 0
     seq_blacklist = {'no', 'num', 'number', 'index', 'idx', 'seq', 'sequence', '순번', '번호', '연번', '순서', 'count', 'n'}
     high_channel_keys = ['channel_id', 'channelid', 'channel_hash', 'chzzk_id', 'chzzk_channel_id', '채널id', '채널아이디', '채널_id', '채널고유id', '고유id', '고유아이디', '고유식별자(uid)', '고유식별자', 'uid', 'uid식별자']
     low_channel_keys = ['channel', 'user_id', 'userid', '유저id', '유저아이디']
@@ -309,6 +317,8 @@ def add_coupon_to_pool(coupon_code: str):
         conn.commit()
 
 def import_coupons_csv(df: pd.DataFrame) -> int:
+    if df.empty or len(df.columns) == 0:
+        return 0
     seq_blacklist = {'no', 'num', 'number', 'index', 'idx', 'seq', 'sequence', '순번', '번호', '연번', '순서', 'count', 'n'}
     col_map = {str(col).strip().lower().replace(" ", "_").replace("-", "_"): col for col in df.columns}
 
