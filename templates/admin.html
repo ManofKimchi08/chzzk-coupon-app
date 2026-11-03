@@ -42,7 +42,7 @@
                 <form action="/admin/login" method="POST">
                     <div class="form-group">
                         <label for="admin_password">관리자 비밀번호</label>
-                        <input type="password" id="admin_password" name="password" class="form-input" placeholder="비밀번호 입력 (기본: streamer123!)" required>
+                        <input type="password" id="admin_password" name="password" class="form-input" placeholder="관리자 비밀번호를 입력하세요" required>
                     </div>
                     <button type="submit" class="btn-primary" style="margin-top: 10px;">관리자 대시보드 접속</button>
                 </form>
@@ -197,7 +197,7 @@
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Client Secret (시크릿 키)</label>
-                            <input type="text" name="client_secret" class="form-input" value="{{ chzzk_client_secret }}" placeholder="발급받은 Client Secret" style="font-size: 0.8rem; padding: 6px 10px;">
+                            <input type="password" name="client_secret" class="form-input" value="" placeholder="{% if has_client_secret %}•••••••• (설정됨 - 변경 시 입력){% else %}발급받은 Client Secret{% endif %}" style="font-size: 0.8rem; padding: 6px 10px;">
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Redirect URI (콜백 주소)</label>
@@ -205,7 +205,7 @@
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Cloudflare 고정 터널 토큰</label>
-                            <input type="password" name="tunnel_token" class="form-input" value="{{ cloudflare_tunnel_token }}" placeholder="고정 터널 토큰" style="font-size: 0.8rem; padding: 6px 10px;">
+                            <input type="password" name="tunnel_token" class="form-input" value="" placeholder="{% if has_tunnel_token %}•••••••• (설정됨 - 변경 시 입력){% else %}고정 터널 토큰{% endif %}" style="font-size: 0.8rem; padding: 6px 10px;">
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">테스트 로그인</label>

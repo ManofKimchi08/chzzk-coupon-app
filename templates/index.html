@@ -50,9 +50,10 @@
                     </a>
                 </div>
 
-                <!-- 개발 및 시뮬레이션용 Mock 로그인 패널 -->
+                {% if enable_mock_login %}
+                <!-- 개발 및 시뮬레이션용 Mock 로그인 패널 (로컬 접속 & 테스트모드 활성 시에만 표시) -->
                 <div class="mock-panel">
-                    <div class="mock-title">⚡ 개발/테스트용 시뮬레이션 로그인 (Chzzk API 키 없이 테스트 가능)</div>
+                    <div class="mock-title">⚡ 개발/테스트용 시뮬레이션 로그인 (로컬 테스트 전용)</div>
                     <div class="mock-buttons">
                         <a href="/auth/mock/login?channel_id=test_user_01&nickname=트위치치지직팬01" class="btn-mock">당첨자 1 로그인</a>
                         <a href="/auth/mock/login?channel_id=test_user_02&nickname=게임마스터_김치지" class="btn-mock">당첨자 2 로그인</a>
@@ -60,6 +61,7 @@
                         <a href="/auth/mock/login?channel_id=unknown_user_99&nickname=미당첨자" class="btn-mock">미당첨 유저 테스트</a>
                     </div>
                 </div>
+                {% endif %}
 
             {% else %}
                 <!-- 로그인 후 유저 정보 바 -->
@@ -126,4 +128,3 @@
     </script>
 </body>
 </html>
-

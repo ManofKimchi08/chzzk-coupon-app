@@ -27,6 +27,39 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     EXEC_DIR = BASE_DIR
 
+# --- 안전한 .env 갱신 함수 (기존 토큰 및 주석 100% 보존 + 개행 인젝션 방어) ---
+def _sanitize_env_val(val: str) -> str:
+    return str(val).replace("\r", "").replace("\n", "").replace("\0", "").strip()
+
+def update_env_file(updates: dict) -> None:
+    env_path = os.path.join(EXEC_DIR, ".env")
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    
+    sanitized_updates = {_sanitize_env_val(k): _sanitize_env_val(v) for k, v in updates.items()}
+    updated_keys = set()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in sanitized_updates:
+                new_lines.append(f"{key}={sanitized_updates[key]}\n")
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+    
+    for key, val in sanitized_updates.items():
+        if key not in updated_keys:
+            if new_lines and not new_lines[-1].endswith("\n"):
+                new_lines.append("\n")
+            new_lines.append(f"{key}={val}\n")
+            
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
 # .env 환경변수 로드
 load_dotenv(os.path.join(EXEC_DIR, ".env"))
 
@@ -35,12 +68,32 @@ CHZZK_CLIENT_SECRET = os.getenv("CHZZK_CLIENT_SECRET", "")
 CHZZK_REDIRECT_URI = os.getenv("CHZZK_REDIRECT_URI", "http://localhost:8000/auth/chzzk/callback")
 ADMIN_CHANNEL_ID = os.getenv("ADMIN_CHANNEL_ID", "streamer_channel_123")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "streamer123!")
-SECRET_KEY = os.getenv("SECRET_KEY", "chzzk_secret_key_2026")
-ENABLE_MOCK_LOGIN = os.getenv("ENABLE_MOCK_LOGIN", "true").lower() == "true"
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+ENABLE_MOCK_LOGIN = os.getenv("ENABLE_MOCK_LOGIN", "false").lower() == "true"
 CLOUDFLARE_TUNNEL_TOKEN = os.getenv("CLOUDFLARE_TUNNEL_TOKEN", "")
+
+# 공개된 기본 SECRET_KEY 감지 시 256-bit 무작위 암호화 키로 자동 교체 (세션 쿠키 위조 원천 차단)
+INSECURE_DEFAULT_KEYS = {
+    "",
+    "chzzk_secret_key_2026",
+    "chzzk_event_secret_key_2026_super_secure",
+    "your_secret_key_here",
+}
+if SECRET_KEY in INSECURE_DEFAULT_KEYS or len(SECRET_KEY) < 32:
+    SECRET_KEY = secrets.token_hex(32)
+    try:
+        update_env_file({"SECRET_KEY": SECRET_KEY})
+    except Exception:
+        pass
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB 파일 업로드 제한
 ADMIN_CHANNEL_IDS = [x.strip() for x in ADMIN_CHANNEL_ID.split(",") if x.strip()]
+
+# 관리자 로그인 무차별 대입(Brute-Force) 방어용 상태
+ADMIN_LOGIN_LOCK = asyncio.Lock()
+LOGIN_FAILURES: dict[str, tuple[int, float]] = {}  # ip -> (fail_count, lockout_until)
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_SECONDS = 300  # 5분 잠금
 
 app = FastAPI(title="Chzzk Coupon Pool Claim App")
 
@@ -51,6 +104,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -65,7 +119,7 @@ templates_dir = os.path.join(BASE_DIR, "templates")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
 
-# --- CSRF 보안 유틸리티 함수 ---
+# --- 보안 유틸리티 함수 ---
 def get_csrf_token(request: Request) -> str:
     token = request.session.get("csrf_token")
     if not token:
@@ -79,34 +133,34 @@ def check_csrf(request: Request, csrf_token: str) -> bool:
         return False
     return secrets.compare_digest(session_token, csrf_token)
 
-# --- 안전한 .env 갱신 함수 (기존 토큰 및 주석 100% 보존) ---
-def update_env_file(updates: dict) -> None:
-    env_path = os.path.join(EXEC_DIR, ".env")
-    lines = []
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    
-    updated_keys = set()
-    new_lines = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#") and "=" in stripped:
-            key = stripped.split("=", 1)[0].strip()
-            if key in updates:
-                new_lines.append(f"{key}={updates[key]}\n")
-                updated_keys.add(key)
-                continue
-        new_lines.append(line)
-    
-    for key, val in updates.items():
-        if key not in updated_keys:
-            if new_lines and not new_lines[-1].endswith("\n"):
-                new_lines.append("\n")
-            new_lines.append(f"{key}={val}\n")
-            
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
+def get_client_ip(request: Request) -> str:
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def is_local_request(request: Request) -> bool:
+    """Cloudflare 터널 등 외부 프록시를 거치지 않은 순수 로컬 PC 접속인지 판별"""
+    proxy_headers = ("cf-connecting-ip", "cf-ray", "x-forwarded-for", "x-real-ip")
+    if any(h in request.headers for h in proxy_headers):
+        return False
+    client_host = request.client.host if request.client else ""
+    return client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+
+def sanitize_csv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """CSV 내보내기 시 엑셀 수식 인젝션(CSV Formula Injection) 방어"""
+    if df.empty:
+        return df
+    dangerous_prefixes = ("=", "+", "-", "@", "\t", "\r")
+    df_clean = df.copy()
+    for col in df_clean.columns:
+        df_clean[col] = df_clean[col].apply(
+            lambda x: f"'{x}" if isinstance(x, str) and x.startswith(dangerous_prefixes) else x
+        )
+    return df_clean
 
 @app.on_event("startup")
 def on_startup():
@@ -127,9 +181,11 @@ async def index_page(request: Request, error: str = None):
         "token_failed": "치지직 로그인 토큰 발급에 실패했습니다.",
         "no_code": "인증 코드가 전달되지 않았습니다.",
         "exception": "로그인 처리 중 일시적인 오류가 발생했습니다.",
-        "mock_login_disabled": "현재 시뮬레이션 테스트 로그인이 비활성화되어 있습니다."
+        "mock_login_disabled": "시뮬레이션 테스트 로그인이 비활성화되어 있거나 외부 접속에서는 허용되지 않습니다.",
+        "oauth_not_configured": "치지직 오픈 API 키가 아직 설정되지 않았습니다. 진행자에게 문의해 주세요."
     }
     oauth_error = error_messages.get(error) if error else None
+    show_mock_panel = ENABLE_MOCK_LOGIN and is_local_request(request)
         
     return templates.TemplateResponse(
         request,
@@ -138,15 +194,18 @@ async def index_page(request: Request, error: str = None):
             "user": user,
             "claim_result": claim_result,
             "event_notice": event_notice,
-            "oauth_error": oauth_error
+            "oauth_error": oauth_error,
+            "enable_mock_login": show_mock_panel
         }
     )
 
 # --- 치지직 OAuth 연동 ---
 @app.get("/auth/chzzk/login")
 async def chzzk_login(request: Request):
-    if not CHZZK_CLIENT_ID or CHZZK_CLIENT_ID == "mock_client_id":
-        return RedirectResponse(url="/auth/mock/login?channel_id=test_user_01&nickname=테스트유저01")
+    if not CHZZK_CLIENT_ID or CHZZK_CLIENT_ID in ("mock_client_id", "your_chzzk_client_id"):
+        if ENABLE_MOCK_LOGIN and is_local_request(request):
+            return RedirectResponse(url="/auth/mock/login?channel_id=test_user_01&nickname=테스트유저01")
+        return RedirectResponse(url="/?error=oauth_not_configured")
     
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
@@ -161,8 +220,8 @@ async def chzzk_login(request: Request):
 
 @app.get("/auth/chzzk/callback")
 async def chzzk_callback(request: Request, code: str = None, state: str = None):
-    saved_state = request.session.get("oauth_state")
-    if not state or not saved_state or state != saved_state:
+    saved_state = request.session.pop("oauth_state", None)
+    if not state or not saved_state or not secrets.compare_digest(str(state), str(saved_state)):
         return RedirectResponse(url="/?error=csrf_validation_failed")
     
     if not code:
@@ -225,7 +284,7 @@ async def chzzk_callback(request: Request, code: str = None, state: str = None):
 
 @app.get("/auth/mock/login")
 async def mock_login(request: Request, channel_id: str = "test_user_01", nickname: str = "시뮬레이션유저"):
-    if not ENABLE_MOCK_LOGIN:
+    if not ENABLE_MOCK_LOGIN or not is_local_request(request):
         return RedirectResponse(url="/?error=mock_login_disabled")
         
     request.session["user"] = {
@@ -264,6 +323,8 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
     event_notice = database.get_event_notice() if is_admin else ""
     tunnel_url = get_active_tunnel_url() if is_admin else ""
     csrf_token = get_csrf_token(request) if is_admin else ""
+    has_client_secret = bool(CHZZK_CLIENT_SECRET and CHZZK_CLIENT_SECRET != "your_chzzk_client_secret")
+    has_tunnel_token = bool(CLOUDFLARE_TUNNEL_TOKEN)
     
     return templates.TemplateResponse(
         request,
@@ -276,11 +337,11 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "event_notice": event_notice,
             "search_query": search or "",
             "winner_search_query": winner_search or "",
-            "chzzk_client_id": CHZZK_CLIENT_ID,
-            "chzzk_client_secret": CHZZK_CLIENT_SECRET,
-            "chzzk_redirect_uri": CHZZK_REDIRECT_URI,
-            "enable_mock_login": ENABLE_MOCK_LOGIN,
-            "cloudflare_tunnel_token": CLOUDFLARE_TUNNEL_TOKEN,
+            "chzzk_client_id": CHZZK_CLIENT_ID if is_admin else "",
+            "has_client_secret": has_client_secret if is_admin else False,
+            "chzzk_redirect_uri": CHZZK_REDIRECT_URI if is_admin else "",
+            "enable_mock_login": ENABLE_MOCK_LOGIN if is_admin else False,
+            "has_tunnel_token": has_tunnel_token if is_admin else False,
             "tunnel_url": tunnel_url,
             "csrf_token": csrf_token,
             "msg": msg,
@@ -290,14 +351,62 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
 
 @app.post("/admin/login")
 async def admin_login(request: Request, password: str = Form(...)):
-    current_pass = database.get_admin_password()
-    if secrets.compare_digest(password, current_pass):
-        request.session["is_admin"] = True
-        request.session["csrf_token"] = secrets.token_urlsafe(32)
-        return RedirectResponse(url="/admin", status_code=303)
+    client_ip = get_client_ip(request)
+    now = time.time()
     
-    # 비밀번호 실패 시 지연 처리 (Brute-Force 방어 - 비동기 이벤트 루프 비차단)
-    await asyncio.sleep(1.0)
+    fail_count, lockout_until = LOGIN_FAILURES.get(client_ip, (0, 0.0))
+    if now < lockout_until:
+        remaining = int(lockout_until - now) + 1
+        return templates.TemplateResponse(
+            request,
+            "admin.html",
+            {
+                "is_admin": False,
+                "coupons": [],
+                "stats": {},
+                "allowed_winners": [],
+                "event_notice": "",
+                "search_query": "",
+                "error_msg": f"로그인 실패 횟수({MAX_LOGIN_ATTEMPTS}회)를 초과하여 보안을 위해 {remaining}초 동안 로그인이 제한됩니다."
+            }
+        )
+
+    async with ADMIN_LOGIN_LOCK:
+        now = time.time()
+        fail_count, lockout_until = LOGIN_FAILURES.get(client_ip, (0, 0.0))
+        if now < lockout_until:
+            remaining = int(lockout_until - now) + 1
+            return templates.TemplateResponse(
+                request,
+                "admin.html",
+                {
+                    "is_admin": False,
+                    "coupons": [],
+                    "stats": {},
+                    "allowed_winners": [],
+                    "event_notice": "",
+                    "search_query": "",
+                    "error_msg": f"로그인 실패 횟수({MAX_LOGIN_ATTEMPTS}회)를 초과하여 보안을 위해 {remaining}초 동안 로그인이 제한됩니다."
+                }
+            )
+
+        current_pass = database.get_admin_password()
+        if secrets.compare_digest(password, current_pass):
+            LOGIN_FAILURES.pop(client_ip, None)
+            request.session.clear()
+            request.session["is_admin"] = True
+            request.session["csrf_token"] = secrets.token_urlsafe(32)
+            return RedirectResponse(url="/admin", status_code=303)
+        
+        fail_count += 1
+        if fail_count >= MAX_LOGIN_ATTEMPTS:
+            LOGIN_FAILURES[client_ip] = (fail_count, time.time() + LOCKOUT_SECONDS)
+        else:
+            LOGIN_FAILURES[client_ip] = (fail_count, 0.0)
+
+        # 비밀번호 실패 시 직렬화된 지연 처리 (병렬 Brute-Force 및 이벤트 루프 차단 동시 방어)
+        await asyncio.sleep(1.0)
+
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -308,7 +417,7 @@ async def admin_login(request: Request, password: str = Form(...)):
             "allowed_winners": [],
             "event_notice": "",
             "search_query": "",
-            "error_msg": "관리자 비밀번호가 올바르지 않습니다."
+            "error_msg": f"관리자 비밀번호가 올바르지 않습니다. (실패 {fail_count}/{MAX_LOGIN_ATTEMPTS}회)"
         }
     )
 
@@ -329,7 +438,7 @@ async def admin_change_password(request: Request, new_password: str = Form(...),
     database.set_admin_password(new_password)
     
     global ADMIN_PASSWORD
-    ADMIN_PASSWORD = new_password
+    ADMIN_PASSWORD = new_password.strip()
     update_env_file({"ADMIN_PASSWORD": ADMIN_PASSWORD})
         
     return RedirectResponse(url="/admin?msg=관리자 비밀번호가 성공적으로 변경되었습니다.", status_code=303)
@@ -352,7 +461,8 @@ async def admin_update_env(
     global CHZZK_CLIENT_ID, CHZZK_CLIENT_SECRET, CHZZK_REDIRECT_URI, ENABLE_MOCK_LOGIN, CLOUDFLARE_TUNNEL_TOKEN
     
     CHZZK_CLIENT_ID = client_id.strip()
-    CHZZK_CLIENT_SECRET = client_secret.strip()
+    if client_secret.strip():
+        CHZZK_CLIENT_SECRET = client_secret.strip()
     CHZZK_REDIRECT_URI = redirect_uri.strip()
     ENABLE_MOCK_LOGIN = enable_mock_login
     if tunnel_token.strip():
@@ -458,13 +568,13 @@ async def admin_export_winners_csv(request: Request):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
     winners = database.get_allowed_winners()
-    df = pd.DataFrame(winners)
+    df = sanitize_csv_dataframe(pd.DataFrame(winners))
     output = io.StringIO()
-    df.to_csv(output, index=False, encoding='utf-8-sig')
+    df.to_csv(output, index=False)
     
     return Response(
-        content=output.getvalue(),
-        media_type="text/csv",
+        content=output.getvalue().encode('utf-8-sig'),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=allowed_winners_export.csv"}
     )
 
@@ -500,13 +610,13 @@ async def admin_export_coupons_csv(request: Request):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
     coupons = database.get_all_coupons()
-    df = pd.DataFrame(coupons)
+    df = sanitize_csv_dataframe(pd.DataFrame(coupons))
     output = io.StringIO()
     df.to_csv(output, index=False)
     
     return Response(
-        content=output.getvalue(),
-        media_type="text/csv",
+        content=output.getvalue().encode('utf-8-sig'),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=coupon_pool_export.csv"}
     )
 
@@ -515,7 +625,7 @@ async def admin_sample_coupons_csv(request: Request):
     sample_content = "coupon_code\nGIFT-CHZZK-SAMPLE-001\nGIFT-CHZZK-SAMPLE-002\nGIFT-CHZZK-SAMPLE-003\n"
     return Response(
         content=sample_content.encode('utf-8-sig'),
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=sample_coupons_template.csv"}
     )
 
@@ -524,7 +634,7 @@ async def admin_sample_winners_csv(request: Request):
     sample_content = "channel_id,nickname\n32819034,치즈당첨자1\n11223344556677889900aabbccddeeff,치즈당첨자2\n"
     return Response(
         content=sample_content.encode('utf-8-sig'),
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=sample_winners_template.csv"}
     )
 
