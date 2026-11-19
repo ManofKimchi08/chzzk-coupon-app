@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import io
+import re
 import html
 import pandas as pd
 from datetime import datetime
@@ -31,11 +32,18 @@ def init_db():
             CREATE TABLE IF NOT EXISTS coupon_pool (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 coupon_code TEXT UNIQUE NOT NULL,
+                coupon_name TEXT DEFAULT '',
                 assigned_channel_id TEXT,
                 assigned_nickname TEXT,
                 claimed_at TEXT
             )
         """)
+
+        # 기존 DB 스키마 마이그레이션 (coupon_name 컬럼 추가)
+        cursor.execute("PRAGMA table_info(coupon_pool)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if "coupon_name" not in existing_cols:
+            cursor.execute("ALTER TABLE coupon_pool ADD COLUMN coupon_name TEXT DEFAULT ''")
         
         # 2. 쿠폰 풀 할당 채널 인덱스 (조회 및 JOIN 성능 극대화)
         cursor.execute("""
@@ -59,6 +67,7 @@ def init_db():
         """)
         cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('event_notice', '치지직 본인 인증으로 1회성 선물 쿠폰 코드를 무작위 수령하세요.')")
         cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('admin_password', 'streamer123!')")
+        cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('allow_nickname_match', 'true')")
         
         conn.commit()
 
@@ -68,18 +77,24 @@ def init_db():
 def sync_initial_seed_data():
     with get_connection() as conn:
         cursor = conn.cursor()
+
+        # 최초 설치 시 1회만 샘플 데이터 삽입 (이후 삭제 시 재시작해도 부활하지 않음)
+        cursor.execute("SELECT value FROM config WHERE key = 'initial_seed_done'")
+        seed_row = cursor.fetchone()
+        if seed_row and seed_row[0] == "true":
+            return
         
         cursor.execute("SELECT COUNT(*) FROM coupon_pool")
         if cursor.fetchone()[0] == 0:
             sample_coupons = [
-                "CHZZK-POOL-8A92-4912",
-                "CHZZK-POOL-77B1-9920",
-                "CHZZK-POOL-33X9-1029",
-                "CHZZK-POOL-9999-WNNR",
-                "CHZZK-POOL-5555-GOLD"
+                ("CHZZK-POOL-8A92-4912", "샘플 경품 1"),
+                ("CHZZK-POOL-77B1-9920", "샘플 경품 2"),
+                ("CHZZK-POOL-33X9-1029", "샘플 경품 3"),
+                ("CHZZK-POOL-9999-WNNR", "샘플 경품 4"),
+                ("CHZZK-POOL-5555-GOLD", "샘플 경품 5")
             ]
-            for code in sample_coupons:
-                cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (code,))
+            for code, cname in sample_coupons:
+                cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code, coupon_name) VALUES (?, ?)", (code, cname))
         
         cursor.execute("SELECT COUNT(*) FROM allowed_winners")
         if cursor.fetchone()[0] == 0:
@@ -92,6 +107,7 @@ def sync_initial_seed_data():
             for c_id, nick in sample_winners:
                 cursor.execute("INSERT OR IGNORE INTO allowed_winners (channel_id, nickname) VALUES (?, ?)", (c_id, nick))
         
+        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('initial_seed_done', 'true')")
         conn.commit()
 
 # --- 설정 및 공지사항 관리 ---
@@ -126,11 +142,37 @@ def set_admin_password(new_pass: str):
         conn.commit()
 
 
-def is_allowed_winner(channel_id: str) -> bool:
+def get_allow_nickname_match() -> bool:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM config WHERE key = 'allow_nickname_match'")
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return str(row[0]).strip().lower() == "true"
+    return True
+
+def set_allow_nickname_match(enabled: bool):
+    val = "true" if enabled else "false"
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('allow_nickname_match', ?)", (val,))
+        conn.commit()
+
+def is_allowed_winner(channel_id: str, nickname: str = None) -> bool:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM allowed_winners WHERE channel_id = ?", (channel_id,))
-        return cursor.fetchone() is not None
+        if cursor.fetchone() is not None:
+            return True
+    if nickname and nickname.strip() and get_allow_nickname_match():
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM allowed_winners WHERE LOWER(TRIM(nickname)) = LOWER(TRIM(?)) LIMIT 1",
+                (nickname.strip(),)
+            )
+            return cursor.fetchone() is not None
+    return False
 
 def add_allowed_winner(channel_id: str, nickname: str):
     clean_id = channel_id.strip()
@@ -160,8 +202,6 @@ def read_csv_robustly(contents: bytes) -> pd.DataFrame:
         except Exception:
             continue
     raise ValueError("CSV 파일의 인코딩을 해석할 수 없습니다. UTF-8 또는 CP949(EUC-KR) 형식인지 확인해 주세요.")
-
-import re
 
 def import_allowed_winners_csv(df: pd.DataFrame) -> int:
     if df.empty or len(df.columns) == 0:
@@ -280,6 +320,7 @@ def get_allowed_winners(search_query: str = None) -> List[Dict[str, Any]]:
                 w.channel_id, 
                 w.nickname,
                 c.coupon_code,
+                c.coupon_name,
                 c.claimed_at
             FROM allowed_winners w
             LEFT JOIN coupon_pool c ON w.channel_id = c.assigned_channel_id
@@ -287,8 +328,8 @@ def get_allowed_winners(search_query: str = None) -> List[Dict[str, Any]]:
         params = []
         if search_query and search_query.strip():
             s = f"%{search_query.strip()}%"
-            query += " WHERE w.channel_id LIKE ? OR w.nickname LIKE ? OR c.coupon_code LIKE ?"
-            params.extend([s, s, s])
+            query += " WHERE w.channel_id LIKE ? OR w.nickname LIKE ? OR c.coupon_code LIKE ? OR c.coupon_name LIKE ?"
+            params.extend([s, s, s, s])
             
         query += " ORDER BY w.channel_id ASC"
         cursor.execute(query, params)
@@ -309,12 +350,23 @@ def clear_all_allowed_winners() -> int:
         return count
 
 # --- 쿠폰 풀 관리 및 무작위 할당 ---
-def add_coupon_to_pool(coupon_code: str):
-    clean_code = coupon_code.strip()
+def add_coupon_to_pool(coupon_code: str, coupon_name: str = "") -> int:
+    clean_name = coupon_name.strip() if coupon_name else ""
+    tokens = [t.strip() for t in re.split(r'[\r\n,]+', coupon_code or "") if t.strip()]
+    count = 0
+    if not tokens:
+        return 0
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (clean_code,))
+        for token in tokens:
+            cursor.execute(
+                "INSERT OR IGNORE INTO coupon_pool (coupon_code, coupon_name) VALUES (?, ?)",
+                (token, clean_name)
+            )
+            if cursor.rowcount > 0:
+                count += cursor.rowcount
         conn.commit()
+    return count
 
 def import_coupons_csv(df: pd.DataFrame) -> int:
     if df.empty or len(df.columns) == 0:
@@ -333,6 +385,13 @@ def import_coupons_csv(df: pd.DataFrame) -> int:
         non_seq_cols = [c for c in df.columns if str(c).strip().lower().replace(" ", "_").replace("-", "_") not in seq_blacklist]
         coupon_col = non_seq_cols[0] if non_seq_cols else df.columns[0]
 
+    name_col = None
+    possible_name_keys = ['coupon_name', 'name', 'prize', 'product', 'item', '상품명', '상품', '경품', '경품명', '쿠폰명', '종류', '메모', '설명']
+    for key in possible_name_keys:
+        if key in col_map and col_map[key] != coupon_col:
+            name_col = col_map[key]
+            break
+
     count = 0
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -341,18 +400,47 @@ def import_coupons_csv(df: pd.DataFrame) -> int:
             if not val or val.lower() == 'nan':
                 continue
             code = val
-            cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code) VALUES (?)", (code,))
+            cname = ""
+            if name_col and pd.notna(row[name_col]):
+                cname_raw = str(row[name_col]).strip()
+                if cname_raw.lower() != 'nan':
+                    cname = cname_raw
+            cursor.execute("INSERT OR IGNORE INTO coupon_pool (coupon_code, coupon_name) VALUES (?, ?)", (code, cname))
             count += 1
         conn.commit()
     return count
 
 def claim_random_coupon(channel_id: str, nickname: str) -> Dict[str, Any]:
-    if not is_allowed_winner(channel_id):
+    if not is_allowed_winner(channel_id, nickname):
         return {"success": False, "code": "NOT_WINNER", "message": "당첨 대상자가 아닙니다."}
     
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
+
+        # 정확한 channel_id가 명단에 없을 경우 닉네임 보조 매칭 및 자동 바인딩
+        cursor.execute("SELECT 1 FROM allowed_winners WHERE channel_id = ?", (channel_id,))
+        if cursor.fetchone() is None:
+            if nickname and nickname.strip() and get_allow_nickname_match():
+                cursor.execute("""
+                    SELECT w.channel_id
+                    FROM allowed_winners w
+                    LEFT JOIN coupon_pool c ON w.channel_id = c.assigned_channel_id
+                    WHERE LOWER(TRIM(w.nickname)) = LOWER(TRIM(?))
+                      AND c.id IS NULL
+                    LIMIT 1
+                """, (nickname.strip(),))
+                matched_row = cursor.fetchone()
+                if matched_row:
+                    cursor.execute(
+                        "UPDATE OR IGNORE allowed_winners SET channel_id = ? WHERE channel_id = ?",
+                        (channel_id, matched_row["channel_id"])
+                    )
+
+            cursor.execute("SELECT 1 FROM allowed_winners WHERE channel_id = ?", (channel_id,))
+            if cursor.fetchone() is None:
+                conn.rollback()
+                return {"success": False, "code": "NOT_WINNER", "message": "당첨 대상자가 아닙니다."}
         
         cursor.execute("SELECT * FROM coupon_pool WHERE assigned_channel_id = ?", (channel_id,))
         existing = cursor.fetchone()
@@ -364,10 +452,11 @@ def claim_random_coupon(channel_id: str, nickname: str) -> Dict[str, Any]:
                 "code": "ALREADY_CLAIMED",
                 "message": "이미 수령 완료된 쿠폰이 존재합니다.",
                 "coupon_code": row_dict["coupon_code"],
+                "coupon_name": row_dict.get("coupon_name") or "",
                 "claimed_at": row_dict["claimed_at"]
             }
         
-        cursor.execute("SELECT id, coupon_code FROM coupon_pool WHERE assigned_channel_id IS NULL ORDER BY RANDOM() LIMIT 1")
+        cursor.execute("SELECT id, coupon_code, coupon_name FROM coupon_pool WHERE assigned_channel_id IS NULL ORDER BY RANDOM() LIMIT 1")
         available = cursor.fetchone()
         
         if not available:
@@ -376,6 +465,7 @@ def claim_random_coupon(channel_id: str, nickname: str) -> Dict[str, Any]:
         
         coupon_id = available["id"]
         coupon_code = available["coupon_code"]
+        coupon_name = available["coupon_name"] or ""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         cursor.execute("""
@@ -390,6 +480,7 @@ def claim_random_coupon(channel_id: str, nickname: str) -> Dict[str, Any]:
                 "success": True,
                 "code": "SUCCESS",
                 "coupon_code": coupon_code,
+                "coupon_name": coupon_name,
                 "nickname": nickname,
                 "claimed_at": now_str
             }
@@ -419,9 +510,9 @@ def get_all_coupons(search_query: str = None) -> List[Dict[str, Any]]:
             q = f"%{search_query.strip()}%"
             cursor.execute("""
                 SELECT * FROM coupon_pool 
-                WHERE coupon_code LIKE ? OR assigned_channel_id LIKE ? OR assigned_nickname LIKE ?
+                WHERE coupon_code LIKE ? OR coupon_name LIKE ? OR assigned_channel_id LIKE ? OR assigned_nickname LIKE ?
                 ORDER BY id DESC
-            """, (q, q, q))
+            """, (q, q, q, q))
         else:
             cursor.execute("SELECT * FROM coupon_pool ORDER BY id DESC")
         return [dict(row) for row in cursor.fetchall()]

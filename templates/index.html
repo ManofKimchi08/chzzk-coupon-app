@@ -15,7 +15,9 @@
             <span class="logo-badge">COUPON POOL</span>
         </a>
         <div class="nav-links">
-            <a href="/admin">진행자(관리자) 페이지</a>
+            {% if show_admin_link %}
+                <a href="/admin">진행자(관리자) 페이지</a>
+            {% endif %}
         </div>
     </nav>
 
@@ -80,8 +82,11 @@
                 {% if claim_result.code == 'SUCCESS' %}
                     <div class="coupon-box">
                         <div class="coupon-label">🎉 무작위 추첨 할당 완료! 당첨 선물 쿠폰 코드</div>
+                        {% if claim_result.coupon_name %}
+                            <div class="prize-badge">🎁 당첨 경품: {{ claim_result.coupon_name }}</div>
+                        {% endif %}
                         <div class="coupon-code" id="couponCode">{{ claim_result.coupon_code }}</div>
-                        <button class="btn-copy" onclick="copyCouponCode()">쿠폰 코드 복사하기</button>
+                        <button class="btn-copy" onclick="copyCouponCode(this)">📋 쿠폰 코드 복사하기</button>
                         <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 15px;">
                             * 1회성 쿠폰이 할당되었습니다. (수령 시각: {{ claim_result.claimed_at }})
                         </p>
@@ -91,10 +96,12 @@
                     <div class="alert-card warning">
                         <div class="alert-title">⚠️ 이미 수령 완료된 쿠폰이 존재합니다</div>
                         <div class="alert-desc">본 계정으로 이미 무작위 발급된 선물 코드가 존재합니다.</div>
-                        <div style="margin-top: 15px; font-weight: bold; font-family: monospace; font-size: 1.3rem; color: #FFF;">
-                            {{ claim_result.coupon_code }}
-                        </div>
-                        <div style="font-size: 0.8rem; margin-top: 8px;">(수령 시각: {{ claim_result.claimed_at }})</div>
+                        {% if claim_result.coupon_name %}
+                            <div class="prize-badge" style="margin-top: 14px; margin-bottom: 4px;">🎁 당첨 경품: {{ claim_result.coupon_name }}</div>
+                        {% endif %}
+                        <div class="coupon-code" id="couponCode" style="margin-top: 12px; font-size: 1.5rem;">{{ claim_result.coupon_code }}</div>
+                        <button class="btn-copy" onclick="copyCouponCode(this)">📋 쿠폰 코드 복사하기</button>
+                        <div style="font-size: 0.8rem; margin-top: 12px; color: var(--text-muted);">(수령 시각: {{ claim_result.claimed_at }})</div>
                     </div>
 
                 {% elif claim_result.code == 'NO_COUPONS' %}
@@ -115,15 +122,64 @@
         </div>
     </div>
 
+    <div class="toast-container" id="toastContainer"></div>
 
     <script>
-        function copyCouponCode() {
-            const codeText = document.getElementById('couponCode').innerText;
-            navigator.clipboard.writeText(codeText).then(() => {
-                alert('쿠폰 코드가 클립보드에 복사되었습니다! 🎉\n' + codeText);
-            }).catch(err => {
-                alert('복사에 실패했습니다. 수동으로 복사해주세요.');
-            });
+        function showToast(message) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast-msg';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 2600);
+        }
+
+        function copyCouponCode(btn) {
+            const codeEl = document.getElementById('couponCode');
+            if (!codeEl) return;
+            const codeText = codeEl.innerText.trim();
+
+            const onCopied = () => {
+                if (btn) {
+                    const origText = btn.dataset.origText || btn.innerText;
+                    btn.dataset.origText = origText;
+                    btn.innerText = '✅ 복사 완료!';
+                    setTimeout(() => {
+                        btn.innerText = origText;
+                    }, 2000);
+                }
+                showToast('🎉 쿠폰 코드가 클립보드에 복사되었습니다!');
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(codeText).then(onCopied).catch(() => {
+                    fallbackCopy(codeText, onCopied);
+                });
+            } else {
+                fallbackCopy(codeText, onCopied);
+            }
+        }
+
+        function fallbackCopy(text, onSuccess) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                if (ok) {
+                    onSuccess();
+                } else {
+                    showToast('복사에 실패했습니다. 직접 선택해 복사해 주세요.');
+                }
+            } catch (e) {
+                showToast('복사에 실패했습니다. 직접 선택해 복사해 주세요.');
+            }
         }
     </script>
 </body>

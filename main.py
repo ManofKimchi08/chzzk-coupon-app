@@ -3,7 +3,7 @@ import io
 import time
 import asyncio
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 import httpx
 import pandas as pd
 from dotenv import load_dotenv
@@ -186,6 +186,7 @@ async def index_page(request: Request, error: str = None):
     }
     oauth_error = error_messages.get(error) if error else None
     show_mock_panel = ENABLE_MOCK_LOGIN and is_local_request(request)
+    show_admin_link = bool(request.session.get("is_admin") or is_local_request(request))
         
     return templates.TemplateResponse(
         request,
@@ -195,7 +196,8 @@ async def index_page(request: Request, error: str = None):
             "claim_result": claim_result,
             "event_notice": event_notice,
             "oauth_error": oauth_error,
-            "enable_mock_login": show_mock_panel
+            "enable_mock_login": show_mock_panel,
+            "show_admin_link": show_admin_link
         }
     )
 
@@ -311,9 +313,29 @@ def get_active_tunnel_url() -> str:
             return f"https://{hostname}"
     except Exception:
         pass
+    if CLOUDFLARE_TUNNEL_TOKEN:
+        try:
+            parsed = urlsplit(CHZZK_REDIRECT_URI)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme in ("http", "https") and host not in ("localhost", "127.0.0.1", ""):
+                return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            pass
     return ""
 
 # --- 진행자(Host/Admin) 관리자 기능 ---
+@app.get("/admin/api/stats")
+async def admin_api_stats(request: Request):
+    if not request.session.get("is_admin"):
+        return Response(status_code=403)
+    stats = database.get_coupon_pool_stats()
+    return {
+        "total": stats["total"],
+        "assigned": stats["assigned"],
+        "remaining": stats["remaining"],
+        "tunnel_url": get_active_tunnel_url()
+    }
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, msg: str = None, error_msg: str = None, search: str = None, winner_search: str = None):
     is_admin = request.session.get("is_admin", False)
@@ -325,6 +347,7 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
     csrf_token = get_csrf_token(request) if is_admin else ""
     has_client_secret = bool(CHZZK_CLIENT_SECRET and CHZZK_CLIENT_SECRET != "your_chzzk_client_secret")
     has_tunnel_token = bool(CLOUDFLARE_TUNNEL_TOKEN)
+    allow_nickname_match = database.get_allow_nickname_match() if is_admin else True
     
     return templates.TemplateResponse(
         request,
@@ -341,6 +364,7 @@ async def admin_page(request: Request, msg: str = None, error_msg: str = None, s
             "has_client_secret": has_client_secret if is_admin else False,
             "chzzk_redirect_uri": CHZZK_REDIRECT_URI if is_admin else "",
             "enable_mock_login": ENABLE_MOCK_LOGIN if is_admin else False,
+            "allow_nickname_match": allow_nickname_match,
             "has_tunnel_token": has_tunnel_token if is_admin else False,
             "tunnel_url": tunnel_url,
             "csrf_token": csrf_token,
@@ -450,6 +474,7 @@ async def admin_update_env(
     client_secret: str = Form(""),
     redirect_uri: str = Form(""),
     enable_mock_login: bool = Form(False),
+    allow_nickname_match: bool = Form(False),
     tunnel_token: str = Form(""),
     csrf_token: str = Form("")
 ):
@@ -467,6 +492,8 @@ async def admin_update_env(
     ENABLE_MOCK_LOGIN = enable_mock_login
     if tunnel_token.strip():
         CLOUDFLARE_TUNNEL_TOKEN = tunnel_token.strip()
+    
+    database.set_allow_nickname_match(allow_nickname_match)
     
     update_env_file({
         "CHZZK_CLIENT_ID": CHZZK_CLIENT_ID,
@@ -488,13 +515,13 @@ async def admin_update_notice(request: Request, event_notice: str = Form(...), c
     return RedirectResponse(url="/admin?msg=시청자 페이지 이벤트 공지 문구가 갱신되었습니다.", status_code=303)
 
 @app.post("/admin/add-coupon")
-async def admin_add_coupon(request: Request, coupon_code: str = Form(...), csrf_token: str = Form("")):
+async def admin_add_coupon(request: Request, coupon_code: str = Form(...), coupon_name: str = Form(""), csrf_token: str = Form("")):
     if not request.session.get("is_admin"):
         return RedirectResponse(url="/admin", status_code=303)
     if not check_csrf(request, csrf_token):
         return RedirectResponse(url="/admin?error_msg=보안 인증(CSRF)에 실패했습니다. 페이지 새로고침 후 다시 시도해 주세요.", status_code=303)
-    database.add_coupon_to_pool(coupon_code)
-    return RedirectResponse(url="/admin?msg=쿠폰 코드가 쿠폰 풀에 추가되었습니다.", status_code=303)
+    count = database.add_coupon_to_pool(coupon_code, coupon_name)
+    return RedirectResponse(url=f"/admin?msg=총 {count}개의 선물 쿠폰이 쿠폰 풀에 추가되었습니다.", status_code=303)
 
 @app.post("/admin/upload-coupons-csv")
 async def admin_upload_coupons_csv(request: Request, file: UploadFile = File(...), csrf_token: str = Form("")):
@@ -622,7 +649,7 @@ async def admin_export_coupons_csv(request: Request):
 
 @app.get("/admin/sample-coupons-csv")
 async def admin_sample_coupons_csv(request: Request):
-    sample_content = "coupon_code\nGIFT-CHZZK-SAMPLE-001\nGIFT-CHZZK-SAMPLE-002\nGIFT-CHZZK-SAMPLE-003\n"
+    sample_content = "coupon_code,coupon_name\nGIFT-CHZZK-SAMPLE-001,싸이버거 세트\nGIFT-CHZZK-SAMPLE-002,배달의민족 1만원권\nGIFT-CHZZK-SAMPLE-003,구글 기프트카드 1만원\n"
     return Response(
         content=sample_content.encode('utf-8-sig'),
         media_type="text/csv; charset=utf-8",

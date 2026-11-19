@@ -28,6 +28,18 @@ if not exist "cloudflared.exe" (
 )
 
 echo.
+tasklist /FI "IMAGENAME eq cloudflared.exe" 2>nul | findstr /i "cloudflared.exe" >nul
+if %errorlevel%==0 (
+    echo 3. 백그라운드 Cloudflare 터널이 이미 정상 가동 중입니다!
+    echo -----------------------------------------------------------------
+    echo 💡 웹 브라우저 관리자 대시보드(http://localhost:8000/admin)에서
+    echo    외부 접속 주소와 설정을 바로 확인하실 수 있습니다.
+    echo -----------------------------------------------------------------
+    echo.
+    pause
+    exit /b 0
+)
+
 echo 3. 외부 접속용 HTTPS 전용 주소(trycloudflare.com)를 생성합니다...
 echo -----------------------------------------------------------------
 echo 💡 웹 브라우저 관리자 대시보드(http://localhost:8000/admin)에 접속하시면

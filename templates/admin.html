@@ -70,26 +70,52 @@
                 </div>
 
                 <script>
+                    function showToast(message) {
+                        let container = document.getElementById('toastContainer');
+                        if (!container) {
+                            container = document.createElement('div');
+                            container.id = 'toastContainer';
+                            container.className = 'toast-container';
+                            document.body.appendChild(container);
+                        }
+                        const toast = document.createElement('div');
+                        toast.className = 'toast-msg';
+                        toast.textContent = message;
+                        container.appendChild(toast);
+                        setTimeout(() => toast.remove(), 3000);
+                    }
+                    function copyTextToClipboard(text, successMsg) {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(text).then(() => showToast(successMsg)).catch(() => fallbackCopyText(text, successMsg));
+                        } else {
+                            fallbackCopyText(text, successMsg);
+                        }
+                    }
+                    function fallbackCopyText(text, successMsg) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        showToast(successMsg);
+                    }
                     function copyViewerShareText() {
                         const liveUrl = document.getElementById('live-tunnel-url');
                         const origin = liveUrl ? liveUrl.innerText.trim() : window.location.origin;
                         const text = `🎁 [치지직 선물 쿠폰 무작위 수령 안내]\n아래 주소로 들어오셔서 치지직 로그인 본인 인증 후 쿠폰을 수령하세요!\n👉 ${origin}`;
-                        navigator.clipboard.writeText(text).then(() => {
-                            alert("시청자 공유용 수령 안내문과 링크가 클립보드에 복사되었습니다!\n\n방송 채팅창이나 커뮤니티에 붙여넣어 공유하세요.");
-                        }).catch(() => {
-                            alert(`공유 링크: ${origin}`);
-                        });
+                        copyTextToClipboard(text, "📋 시청자 공유용 수령 안내문과 링크가 복사되었습니다!");
                     }
                     function copyTunnelText(text) {
-                        navigator.clipboard.writeText(text).then(() => {
-                            alert("클립보드에 복사되었습니다!\n\n" + text);
-                        });
+                        copyTextToClipboard(text, "📋 클립보드에 복사되었습니다!");
                     }
                     function applyRedirectUri(uri) {
                         const input = document.querySelector('input[name="redirect_uri"]');
                         if (input) {
                             input.value = uri;
-                            alert("Redirect URI 입력란에 자동 적용되었습니다!\n\n하단의 [💾 API 설정 저장] 버튼을 누르시면 즉시 완료됩니다.");
+                            showToast("⚡ Redirect URI 적용 완료! [💾 설정 저장] 버튼을 눌러 주세요.");
                         }
                     }
                 </script>
@@ -136,25 +162,25 @@
                 {% endif %}
 
                 <!-- 통계 수치 카드 3열 -->
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
+                <div class="stats-grid">
                     <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md); text-align: center;">
                         <div style="font-size: 0.8rem; color: var(--text-muted);">총 준비된 쿠폰 수</div>
-                        <div style="font-size: 1.8rem; font-weight: 800; color: #FFF; margin-top: 5px;">{{ stats.total }}개</div>
+                        <div id="statTotal" style="font-size: 1.8rem; font-weight: 800; color: #FFF; margin-top: 5px;">{{ stats.total }}개</div>
                     </div>
                     <div style="background: rgba(0, 255, 163, 0.05); border: 1px solid var(--chzzk-mint); padding: 18px; border-radius: var(--radius-md); text-align: center;">
                         <div style="font-size: 0.8rem; color: var(--chzzk-mint);">발급(수령) 완료</div>
-                        <div style="font-size: 1.8rem; font-weight: 800; color: var(--chzzk-mint); margin-top: 5px;">{{ stats.assigned }}개</div>
+                        <div id="statAssigned" style="font-size: 1.8rem; font-weight: 800; color: var(--chzzk-mint); margin-top: 5px;">{{ stats.assigned }}개</div>
                     </div>
-                    <div style="background: rgba(255, 184, 0, 0.05); border: 1px solid {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %}; padding: 18px; border-radius: var(--radius-md); text-align: center;">
-                        <div style="font-size: 0.8rem; color: {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %};">
+                    <div id="statRemainingCard" style="background: rgba(255, 184, 0, 0.05); border: 1px solid {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %}; padding: 18px; border-radius: var(--radius-md); text-align: center;">
+                        <div id="statRemainingLabel" style="font-size: 0.8rem; color: {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %};">
                             남은 쿠폰 수량 {% if stats.remaining <= 5 %}(⚠️ 부족 임박){% endif %}
                         </div>
-                        <div style="font-size: 1.8rem; font-weight: 800; color: {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %}; margin-top: 5px;">{{ stats.remaining }}개</div>
+                        <div id="statRemaining" style="font-size: 1.8rem; font-weight: 800; color: {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %}; margin-top: 5px;">{{ stats.remaining }}개</div>
                     </div>
                 </div>
 
                 <!-- 공지 문구 및 비밀번호 변경 2열 그리드 -->
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px;">
+                <div class="admin-two-col">
                     <!-- 메인 공지 문구 수정 -->
                     <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 18px; border-radius: var(--radius-md);">
                         <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 6px;">📢 시청자 페이지 공지 수정</div>
@@ -189,7 +215,7 @@
                         </div>
                     </div>
 
-                    <form action="/admin/update-env" method="POST" style="display: grid; grid-template-columns: 1fr 1fr 1.1fr 1.1fr 130px auto; gap: 10px; align-items: end;">
+                    <form action="/admin/update-env" method="POST" class="env-form-grid">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Client ID (클라이언트 아이디)</label>
@@ -208,10 +234,17 @@
                             <input type="password" name="tunnel_token" class="form-input" value="" placeholder="{% if has_tunnel_token %}•••••••• (설정됨 - 변경 시 입력){% else %}고정 터널 토큰{% endif %}" style="font-size: 0.8rem; padding: 6px 10px;">
                         </div>
                         <div>
-                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">테스트 로그인</label>
+                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">테스트 로그인 (로컬 전용)</label>
                             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; height: 31px; cursor: pointer; color: var(--text-color);">
                                 <input type="checkbox" name="enable_mock_login" value="true" {% if enable_mock_login %}checked{% endif %}>
                                 <span>테스트모드</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">당첨자 닉네임 보조 매칭</label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; height: 31px; cursor: pointer; color: var(--text-color);" title="ID 체계가 다르더라도 닉네임 일치 시 당첨자 인정 및 자동 바인딩">
+                                <input type="checkbox" name="allow_nickname_match" value="true" {% if allow_nickname_match %}checked{% endif %}>
+                                <span>닉네임 매칭 허용</span>
                             </label>
                         </div>
                         <div>
@@ -231,10 +264,14 @@
                         <form action="/admin/add-coupon" method="POST" style="margin-bottom: 20px;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group">
-                                <label for="coupon_code">신규 쿠폰 코드 입력</label>
-                                <input type="text" id="coupon_code" name="coupon_code" class="form-input" placeholder="예: GIFT-CHZZK-POOL-9901" required>
+                                <label for="coupon_name">상품명 / 경품명 (선택)</label>
+                                <input type="text" id="coupon_name" name="coupon_name" class="form-input" placeholder="예: 싸이버거 세트, 배민 1만원권">
                             </div>
-                            <button type="submit" class="btn-primary">쿠폰 풀에 1개 추가</button>
+                            <div class="form-group">
+                                <label for="coupon_code">신규 쿠폰 코드 입력 (줄바꿈/쉼표로 여러 개 동시 등록 가능)</label>
+                                <textarea id="coupon_code" name="coupon_code" rows="2" class="form-input" placeholder="예: GIFT-CHZZK-POOL-9901&#10;줄바꿈이나 쉼표(,)로 여러 개 붙여넣기 가능" required style="resize: vertical; font-family: monospace;"></textarea>
+                            </div>
+                            <button type="submit" class="btn-primary">쿠폰 풀에 추가하기</button>
                         </form>
 
                         <hr style="border-color: var(--border-color); margin: 15px 0;">
@@ -246,7 +283,7 @@
                                 <input type="file" id="coupons_file" name="file" accept=".csv" class="form-input" required>
                             </div>
                             <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                                <span>* CSV 컬럼 헤더: <code>coupon_code</code></span>
+                                <span>* CSV 헤더: <code>coupon_code</code>, <code>coupon_name</code>(선택)</span>
                                 <a href="/admin/sample-coupons-csv" style="color: var(--chzzk-mint); font-size: 0.75rem; text-decoration: underline;">📄 샘플 CSV 양식 다운로드</a>
                             </p>
                             <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #00C853, #009688); color: #FFF;">쿠폰 풀 일괄 업로드</button>
@@ -298,14 +335,15 @@
                                 <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 {% if search_query %}접기{% else %}펼치기{% endif %}]</span>
                             </div>
                         </div>
-                        <div style="display: flex; gap: 8px; align-items: center;" onclick="event.stopPropagation();">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" onclick="event.stopPropagation();">
+                            <button type="button" id="toggleBlurBtn" onclick="toggleAllCouponBlur()" class="btn-copy" style="padding: 6px 12px; font-size: 0.8rem;">👁️ 미수령 쿠폰 코드 표시/숨김</button>
                             <form action="/admin/clear-coupons" method="POST" onsubmit="return confirm('정말로 쿠폰 풀의 모든 쿠폰 코드를 삭제하시겠습니까?');" style="display: inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:6px 12px; border-radius:8px; font-size:0.8rem; cursor:pointer;">🗑️ 전체 쿠폰 삭제</button>
                             </form>
 
                             <form action="/admin" method="GET" style="display: flex; gap: 6px;">
-                                <input type="text" name="search" class="form-input" placeholder="코드 / ID / 닉네임 검색..." value="{{ search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 190px;">
+                                <input type="text" name="search" class="form-input" placeholder="코드 / 상품명 / ID 검색..." value="{{ search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 190px;">
                                 <button type="submit" class="btn-copy" style="padding: 6px 12px; font-size: 0.85rem;">검색</button>
                                 {% if search_query %}
                                     <a href="/admin" class="btn-logout" style="line-height: 24px;">초기화</a>
@@ -321,6 +359,7 @@
                                 <thead>
                                     <tr>
                                         <th>ID</th>
+                                        <th>상품명</th>
                                         <th>쿠폰 코드</th>
                                         <th>할당된 치지직 채널 ID</th>
                                         <th>닉네임</th>
@@ -333,7 +372,12 @@
                                     {% for c in coupons %}
                                         <tr>
                                             <td>{{ c.id }}</td>
-                                            <td style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
+                                            <td>{{ c.coupon_name or '-' }}</td>
+                                            {% if not c.assigned_channel_id %}
+                                                <td class="coupon-blur unassigned-code" onclick="this.classList.toggle('revealed')" title="클릭하여 코드 확인/숨김" style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
+                                            {% else %}
+                                                <td style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
+                                            {% endif %}
                                             <td><code>{{ c.assigned_channel_id or '-' }}</code></td>
                                             <td><strong>{{ c.assigned_nickname or '-' }}</strong></td>
                                             <td>
@@ -363,7 +407,7 @@
                                         </tr>
                                     {% else %}
                                         <tr>
-                                            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 30px;">
                                                 {% if search_query %}
                                                     검색 결과 조건에 맞는 쿠폰 데이터가 없습니다.
                                                 {% else %}
@@ -438,7 +482,7 @@
                                                 {% endif %}
                                             </td>
                                             <td style="font-family: monospace; font-weight: bold; color: {% if w.coupon_code %}var(--chzzk-mint){% else %}var(--text-muted){% endif %};">
-                                                {{ w.coupon_code or '-' }}
+                                                {{ w.coupon_code or '-' }}{% if w.coupon_name %} <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">({{ w.coupon_name }})</span>{% endif %}
                                             </td>
                                             <td style="font-size: 0.8rem; color: var(--text-muted);">{{ w.claimed_at or '-' }}</td>
                                             <td>
@@ -467,6 +511,20 @@
                 </div>
 
                 <script>
+                    let allRevealed = false;
+                    function toggleAllCouponBlur() {
+                        allRevealed = !allRevealed;
+                        const cells = document.querySelectorAll('.unassigned-code');
+                        cells.forEach(cell => {
+                            if (allRevealed) {
+                                cell.classList.add('revealed');
+                            } else {
+                                cell.classList.remove('revealed');
+                            }
+                        });
+                        showToast(allRevealed ? '👁️ 미수령 쿠폰 코드가 표시됩니다 (방송 화면 주의)' : '🙈 미수령 쿠폰 코드가 블러 보호되었습니다.');
+                    }
+
                     function toggleCouponSection() {
                         const body = document.getElementById('couponSectionBody');
                         const icon = document.getElementById('couponToggleIcon');
@@ -498,6 +556,36 @@
                     if (document.getElementById('winnerSectionBody') && document.getElementById('winnerSectionBody').style.display !== 'none') {
                         document.getElementById('winnerToggleIcon').style.transform = 'rotate(90deg)';
                     }
+
+                    // 실시간 통계 5초 자동 갱신 (Live Polling)
+                    setInterval(async () => {
+                        try {
+                            const resp = await fetch('/admin/api/stats');
+                            if (!resp.ok) return;
+                            const data = await resp.json();
+                            const elTotal = document.getElementById('statTotal');
+                            const elAssigned = document.getElementById('statAssigned');
+                            const elRemaining = document.getElementById('statRemaining');
+                            const elRemainingLabel = document.getElementById('statRemainingLabel');
+                            const elRemainingCard = document.getElementById('statRemainingCard');
+                            if (elTotal) elTotal.innerText = data.total + '개';
+                            if (elAssigned) elAssigned.innerText = data.assigned + '개';
+                            if (elRemaining) {
+                                elRemaining.innerText = data.remaining + '개';
+                                const color = data.remaining <= 5 ? 'var(--accent-red)' : 'var(--accent-yellow)';
+                                elRemaining.style.color = color;
+                                if (elRemainingLabel) {
+                                    elRemainingLabel.style.color = color;
+                                    elRemainingLabel.innerText = data.remaining <= 5 ? '남은 쿠폰 수량 (⚠️ 부족 임박)' : '남은 쿠폰 수량';
+                                }
+                                if (elRemainingCard) elRemainingCard.style.borderColor = color;
+                            }
+                            const liveUrlEl = document.getElementById('live-tunnel-url');
+                            if (liveUrlEl && data.tunnel_url && liveUrlEl.innerText.trim() !== data.tunnel_url) {
+                                liveUrlEl.innerText = data.tunnel_url;
+                            }
+                        } catch (e) {}
+                    }, 5000);
                 </script>
 
             </div>
@@ -505,5 +593,6 @@
 
     </div>
 
+    <div class="toast-container" id="toastContainer"></div>
 </body>
 </html>
