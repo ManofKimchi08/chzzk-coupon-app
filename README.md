@@ -6,22 +6,21 @@
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 
 치지직(CHZZK) 스트리머 이벤트를 위한 **시청자 본인 인증 기반 1회성 선물 쿠폰 무작위 수령 및 진행자 관리 웹 플랫폼**입니다.  
-본 리포지토리 및 프로그램은 타 스트리머, 매니저, 운영진에게 즉시 인수인계하여 운영할 수 있도록 제작되었습니다.
+본 리포지토리 및 프로그램은 타 스트리머, 매니저, 운영진에게 즉시 인수인계하여 안전하게 생방송 이벤트를 진행할 수 있도록 제작되었습니다.
 
 ---
 
 ## ✨ 핵심 기능 요약
 
-- **🔒 치지직 OAuth 2.0 본인 인증**: 시청자의 고유 `channelId`를 오픈 API로 검증하여 중복 수령 완벽 차단
-- **🎲 무작위(Random) 쿠폰 자동 할당**: 쿠폰 풀(Pool)에서 남아있는 선물 코드를 1개씩 무작위 자동 발급
+- **🔒 치지직 공식 Open API & 네이버 OAuth 2.0 본인 인증**: 시청자의 고유 `channelId`를 검증하여 엄격한 당첨자 명단 대조 및 중복 수령 원천 차단
+- **🎁 명시적 뽑기 연출 (`POST /claim`) & 경품명 표시**: 로그인 직후 자동 차감 대신 당첨자가 **[🎁 행운의 당첨 선물 뽑기!]** 버튼을 클릭하면 폭죽 애니메이션과 함께 경품명·쿠폰 코드 공개
 - **🎙️ 진행자 전용 관리자 대시보드 (`/admin`)**:
-  - **🔑 웹 UI 상에서 네이버 치지직 API 키 직접 입력 & 실시간 동기화 (메모장 편집 불필요)**
-  - 쿠폰 코드 및 당첨자 명단 대량 CSV 업로드 (UTF-8 BOM/CP949/EUC-KR 및 순번 제외 스마트 컬럼 자동 감지)
-  - 등록된 당첨자 명단 현황 및 쿠폰 수령 상태 실시간 아코디언 UI 조회/검색
-  - 쿠폰 및 당첨자 명단 전체 일괄 삭제 (`🗑️ 전체 쿠폰 삭제`, `🗑️ 전체 명단 삭제`)
-  - 쿠폰 풀 및 당첨자 명단 CSV 내보내기 다운로드
-  - 실시간 수령 내역 검색, 수령 상태 초기화(리셋) 및 공지 문구 편집
-- **🚀 무설치 포터블 가동 지원**: 파이썬이 설치되어 있지 않은 컴에서도 `.exe` 실행 파일 클릭으로 바로 구동
+  - **🟢 이벤트 오픈 / 일시정지 스위치**: 준비·검수 중에는 수령을 일시정지해 두고 세팅 완료 후 원클릭 오픈
+  - **👁️ 전 구간 쿠폰 코드 블러 보호**: 미수령·수령 완료 코드 모두 기본 블러 처리하여 생방송 화면 송출 시 스나이핑 방지
+  - **📱 방송 송출용 QR 코드 모달 & 5초 실시간 통계/경품별 재고 자동 갱신**
+  - **🔑 웹 UI 상에서 API 키·인증 방식·Cloudflare 고정 터널 실시간 설정**
+  - 쿠폰(상품명 포함)·당첨자 명단 **여러 줄 붙여넣기 일괄 등록** 및 스마트 CSV 업로드/내보내기
+- **🛡️ 로컬 루프백(`127.0.0.1`) 격리 & 프로세스 자동 정리**: 내부망 직접 포트 접근 차단, Windows Job Object 기반 `cloudflared` 자식 프로세스 자동 종료, 무설치 포터블 `.exe` 지원
 
 ---
 
@@ -42,12 +41,15 @@
 ```
 chzzk-coupon-app/
 ├── dist/ChzzkCouponServer/           # 🚀 [인수인계용] 무설치 포터블 패키지 폴더
-│   ├── ChzzkCouponServer.exe        # 실행 파일 (더블클릭 시 서버 구동 + 브라우저 자동 오픈)
+│   ├── ChzzkCouponServer.exe        # 실행 파일 (더블클릭 시 서버 + Cloudflare 터널 + 브라우저 자동 오픈)
+│   ├── cloudflared.exe              # Cloudflare HTTPS 터널 실행 엔진
+│   ├── run_public.bat               # 외부 공개 보조 실행 배치 파일
 │   ├── .env                         # ⚙️ API 키 및 비밀번호 설정 파일 (웹 UI 또는 메모장으로 수정)
-│   └── HANDOVER_MANUAL.md           # 상세 운영 매뉴얼 문서
-├── database.py                      # SQLite 데이터베이스 및 무작위 쿠폰 할당 트랜잭션 로직
-├── main.py                          # FastAPI 백엔드 라우터 및 OAuth 본인인증
-├── run_server.bat                   # 개발 환경 배치 실행 파일
+│   └── README.md                    # 상세 운영 매뉴얼 문서
+├── database.py                      # SQLite(WAL) 데이터베이스, 동시성 트랜잭션 및 스마트 CSV 파서
+├── main.py                          # FastAPI 백엔드 라우터, 보안 미들웨어 및 OAuth 2.0 연동
+├── tunnel_manager.py                # Cloudflare 터널 생명주기 및 프로세스 안전 관리 모듈
+├── run_app.py                       # 원클릭 실행 진입점 (127.0.0.1 루프백 전용 바인딩)
 ├── templates/                       # HTML 웹 UI 템플릿 (Jinja2)
 └── static/                          # CSS 스타일시트 및 캐릭터 이미지 자산
 ```
@@ -56,47 +58,19 @@ chzzk-coupon-app/
 
 ## 🔑 필수 환경설정 (웹 UI 또는 `.env` 세팅법)
 
-인수인계받은 담당자는 서버 실행 후 관리자 대시보드(`http://localhost:8000/admin`)의 **`🔑 네이버 치지직 API 키 및 서버 설정`** 카드에서 직접 입력 및 저장하거나, **`.env`** 파일을 메모장으로 열어 설정할 수 있습니다.
+### 1단계: 치지직 공식 Open API (권장) 또는 네이버 로그인 API 등록
 
-### 1단계: 네이버 치지직 개발자 센터 API 등록
-1. [네이버 개발자 센터(Naver Developers)](https://developers.naver.com/) 접속 ➔ 로그인 ➔ **[Application] ➔ [애플리케이션 등록]**
-2. **애플리케이션 이름**: `치지직 쿠폰 이벤트` (자유롭게 입력)
-3. **사용 API**: `네이버 로그인` 선택 ➔ **별명** 항목 **필수** 선택 *(이용자 식별자는 기본 자동 제공)*
-4. **로그인 오픈 API 서비스 환경**: **`WEB 설정`** 선택
-   - **서비스 URL**: `http://localhost:8000`
-   - **Callback URL**: `http://localhost:8000/auth/chzzk/callback` *(⚠️ 주소 오탈자 주의)*
-5. 등록 완료 후 생성된 **Client ID** 및 **Client Secret** 값을 복사합니다.
+#### 방안 A. 치지직 공식 개발자 센터 (`chzzk.naver.com` / 권장 ⭐)
+- 치지직 추첨기 CSV의 고유 ID(`channelId`)와 **100% 동일한 ID 체계**를 사용하므로 닉네임 변경 사칭 걱정 없이 완벽하게 일치합니다.
+- **인증 URL**: `https://chzzk.naver.com/account-interlock`
+- **Callback URL**: `https://<내_도메인_또는_터널주소>/auth/chzzk/callback`
+- 대시보드(`/admin`)의 **인증 방식**에서 **`치지직 공식 Open API (권장)`** 선택 후 **Client ID / Client Secret / Redirect URI**를 저장하세요.
 
-### 2단계: API 키 등록 (웹 대시보드 UI 또는 `.env` 파일)
-서버 실행 후 `http://localhost:8000/admin` 접속 ➔ **`🔑 네이버 치지직 API 키 및 서버 설정`** 카드에 복사한 키 값을 입력하고 **[💾 API 설정 저장]** 버튼을 클릭하면 즉시 반영됩니다. (또는 `.env` 파일 메모장 편집 가능)
-
-### 3단계: 네이버 로그인 애플리케이션 검수 신청 및 인수인계 노하우
-- **'개발 중' 상태 (테스트 단계)**: 애플리케이션 최초 등록 직후에는 '개발 중' 상태로 등록되며, [멤버 관리]에 등록된 테스트 네이버 아이디(최대 20개)만 로그인이 가능합니다.
-- **'서비스 적용' 승인 (모든 시청자 공개)**: 실제 시청자들에게 이벤트를 진행하려면 개발자 센터에서 **[애플리케이션 검수 요청]**을 신청하여 승인('서비스 적용' 상태)을 받아야 모든 시청자가 로그인할 수 있습니다.
-- **💡 인수인계 & API 키 교체 팁**:
-  - 네이버 검수는 소스코드가 아니라 **[API 키(Client ID) 단위]**로 승인됩니다.
-  - **방안 A (추천)**: 이벤트를 진행할 스트리머/운영진 계정으로 애플리케이션을 등록하고 검수를 받아둔 뒤, 그 API 키를 대시보드 UI(`/admin`)에 등록해 사용합니다.
-  - **방안 B**: 개발자가 받은 검수 승인 앱의 **[멤버 관리]** 메뉴에 스트리머/매니저 네이버 아이디를 '관리자'로 초대해 주면 API 키 교체 없이 검수 완료된 동일 키를 공유할 수 있습니다.
-
-```env
-# 1. 네이버 개발자 센터에서 발급받은 실제 API 키값
-CHZZK_CLIENT_ID=발급받은_Client_ID_입력
-CHZZK_CLIENT_SECRET=발급받은_Client_Secret_입력
-CHZZK_REDIRECT_URI=http://localhost:8000/auth/chzzk/callback
-
-# 2. 테스트 로그인 허용 여부 (실제 운영 시에는 false 권장)
-ENABLE_MOCK_LOGIN=true
-
-# 3. 스트리머 및 매니저들의 치지직 채널 ID (쉼표로 구분하여 여러 명 지정 가능)
-# 등록된 계정으로 로그인 시 자동으로 관리자 대시보드 접근 권한이 부여됩니다.
-ADMIN_CHANNEL_ID=스트리머_채널_ID, 매니저1_채널_ID
-
-# 4. 진행자 관리자 페이지 (/admin) 접속 비밀번호
-ADMIN_PASSWORD=streamer123!
-
-# 5. 세션 암호화 보안키 (자유롭게 변경 가능)
-SECRET_KEY=chzzk_coupon_secret_key_2026
-```
+#### 방안 B. 네이버 개발자 센터 (`developers.naver.com` 호환 모드)
+1. [네이버 개발자 센터(Naver Developers)](https://developers.naver.com/) 접속 ➔ **[Application] ➔ [애플리케이션 등록]**
+2. **사용 API**: `네이버 로그인` 선택 ➔ **별명** 항목 선택
+3. **서비스 환경 (`WEB 설정`)**: 서비스 URL(`http://localhost:8000` 또는 터널 주소) 및 Callback URL(`/auth/chzzk/callback`) 입력
+4. 대시보드(`/admin`)의 **인증 방식**을 **`네이버 로그인 (네아로 호환)`**으로 선택하고 키를 저장하세요. *(※ 네이버 로그인 고유번호 체계상 닉네임으로만 당첨자를 등록해야 할 경우에만 제한적으로 `닉네임 매칭 허용` 옵션을 사용할 수 있습니다.)*
 
 ---
 
@@ -105,7 +79,7 @@ SECRET_KEY=chzzk_coupon_secret_key_2026
 ### 방법 A: 파이썬 미설치 환경 (무설치 포터블 `.exe` - 권장 ⭐)
 1. `dist/ChzzkCouponServer` 폴더로 이동합니다.
 2. **`ChzzkCouponServer.exe`** 파일을 더블클릭합니다.
-3. 까만 터미널 창이 뜨면서 서버가 구동되고, **자동으로 웹 브라우저(`http://localhost:8000`)가 열립니다.**
+3. 로컬 전용 서버(`127.0.0.1:8000`)와 백그라운드 Cloudflare 터널이 자동으로 켜지고, **웹 브라우저(`/admin`)가 자동으로 열립니다.**
 
 ### 방법 B: 파이썬 개발 환경 (Source Code)
 ```bash
@@ -114,65 +88,34 @@ cd chzzk-coupon-app
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python run_app.py
 ```
 
 ---
 
-## 🕹️ 접속 주소 및 운영 가이드
+## 🕹️ 진행자 운영 순서
 
-- **시청자 쿠폰 수령 페이지**: `http://localhost:8000`
-- **진행자 관리자 대시보드**: `http://localhost:8000/admin`
-
-### 관리자 주요 작동 순서
-1. **관리자 로그인**: `/admin` 접속 후 `.env`에 지정한 비밀번호(`ADMIN_PASSWORD`) 입력 또는 스트리머 계정으로 로그인.
-2. **쿠폰 등록**: `[1. 선물 쿠폰 코드 풀 등록]` 서식에서 쿠폰 코드를 1개씩 추가하거나 CSV 파일로 일괄 업로드.
-3. **수령 범위 지정**:
-   - **지정 당첨자 전용**: 당첨된 치지직 채널 ID 명단을 등록한 시청자만 수령 가능.
-   - **전체 유저 수령 허용**: `[모든 유저 수령 허용으로 변경]` 클릭 시 로그인한 누구나 선착순 수령.
-4. **결과 확인 및 리셋**: 실시간 검색 창으로 수령 내역 확인 및 필요 시 수령 리셋/삭제.
+1. **관리자 로그인**: `/admin` 접속 후 비밀번호(`ADMIN_PASSWORD`) 입력 (또는 스트리머 계정으로 로그인).
+2. **준비 중 스위치 켜기**: 쿠폰·명단을 세팅하는 동안 상단의 **`⏸️ 수령 일시정지(준비 중) 전환`**을 눌러 조기 수령을 차단합니다.
+3. **쿠폰 & 당첨자 등록**:
+   - `[1. 선물 쿠폰 코드 풀 등록]`: 경품명(선택)과 쿠폰 코드를 여러 줄로 붙여넣거나 CSV 일괄 업로드.
+   - `[2. 당첨 대상자 명단 등록]`: 당첨자 고유 ID/닉네임을 여러 줄로 붙여넣거나 CSV 일괄 업로드.
+4. **수령 오픈 & 방송 송출**: **`▶️ 이벤트 수령 시작하기`** 클릭 후 `[📋 시청자 수령 안내문 & 주소 복사]` 또는 `[📱 방송용 QR 코드]`로 시청자에게 링크를 공유합니다.
+5. **이벤트 종료 후 백업**: `[📥 쿠폰 CSV 내보내기]`로 발급 기록을 보관한 뒤 다음 이벤트 시 `[🔄 새 이벤트 전체 초기화]`로 깔끔하게 비울 수 있습니다.
 
 ---
 
-## ⚠️ 필수 주의사항 (Cautionary Notes)
+## ⚠️ 필수 주의사항
 
 > [!CAUTION]
-> **1. `.env` 보안키 절대 외부 유출 금지**  
-> `CHZZK_CLIENT_SECRET`과 `ADMIN_PASSWORD`가 적힌 `.env` 파일은 GitHub 등 공용 공간에 올리지 마시고, 오직 인수인계받는 담당자에게만 전송해 주세요.
+> **1. `.env` 보안키 및 관리자 비밀번호 관리**  
+> `CHZZK_CLIENT_SECRET`, `ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, `SECRET_KEY`가 담긴 `.env` 파일은 절대 외부에 공유하지 마세요. (최초 가동 시 `SECRET_KEY`는 자동으로 256-bit 무작위 난수로 교체됩니다.)
 
 > [!WARNING]
-> **2. 네이버 Callback URL 오탈자 주의**  
-> 네이버 개발자 센터의 Callback URL과 `.env` 파일의 `CHZZK_REDIRECT_URI`는 토씨 하나 안 틀리고 정확히 `http://localhost:8000/auth/chzzk/callback` 이어야 본인 인증 오류가 나지 않습니다.
-
-> [!IMPORTANT]
-> **3. 8000번 포트 중복 실행 주의**  
-> 이미 `ChzzkCouponServer.exe`나 다른 서버가 구동 중인 상태에서 중복 실행하면 포트 충돌(`Errno 10048`) 오류가 발생합니다. 기존에 열린 서버 터미널 창을 끄고 재실행해 주세요.
-
-> [!NOTE]
-> **4. 외부 시청자 공개 방법 (더블클릭 자동 공개 기능 제공)**  
-> 내 컴퓨터에서 연 서버를 시청자들에게 공개할 때는 **`run_public.bat` 파일을 더블클릭**하시면 서버 구동과 동시에 전 세계 시청자용 공개 URL(`https://xxxx.loca.lt`)이 화면에 자동 생성됩니다.
-> - 생성된 공개 URL을 **네이버 개발자 센터**의 서비스 URL 및 Callback URL(`https://xxxx.loca.lt/auth/chzzk/callback`)에 등록하고 시청자들에게 공유해 주시면 바로 접속 가능합니다.
-> - 또는 무료 도구인 **ngrok** (`ngrok http 8000`)을 활용하셔도 더욱 안정적으로 외부 접속 주소를 띄울 수 있습니다.
-
-
----
-
-## 🌐 24시간 무중단 클라우드 배포 가이드 (컴퓨터가 꺼져도 작동하는 방법)
-
-스트리머나 진행자의 컴퓨터가 꺼져 있어도 시청자들이 24시간 언제든 접속해서 쿠폰을 수령하게 하려면 **100% 무료 클라우드 서비스(Render)**를 활용할 수 있습니다.
-
-### Render 배포 3분 가이드
-1. **[Render.com](https://render.com/)** 접속 ➔ **`Sign in with GitHub`** 로그인
-2. **`New +` ➔ `Web Service`** 클릭 ➔ GitHub 저장소 `ManofKimchi08/chzzk-coupon-app` 선택
-3. **설정값 입력**:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-   - **Instance Type**: **`Free`**
-4. **Environment Variables**에 `.env`에 있던 `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `ADMIN_PASSWORD` 등 입력 후 **[Create Web Service]** 클릭
-5. 완성된 `https://yyyy.onrender.com` 주소를 네이버 개발자 센터 서비스 URL 및 Callback URL에 등록하면 **컴퓨터를 꺼두어도 24시간 자동 동작**합니다!
+> **2. Callback URL 일치 확인**  
+> 치지직/네이버 개발자 센터에 등록한 Callback URL과 관리자 설정의 `Redirect URI`는 마지막 경로(`/auth/chzzk/callback`)까지 정확히 일치해야 합니다.
 
 ---
 
 ## 📄 라이선스
 MIT License
-

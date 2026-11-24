@@ -8,6 +8,8 @@
 </head>
 <body>
 
+    <canvas id="confettiCanvas" style="position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9998;"></canvas>
+
     <!-- Header Navbar -->
     <nav class="navbar">
         <a href="/" class="logo">
@@ -79,7 +81,28 @@
                 </div>
 
                 <!-- 수령 결과 섹션 -->
-                {% if claim_result.code == 'SUCCESS' %}
+                <div id="claimArea">
+                {% if claim_result.code == 'READY_TO_CLAIM' %}
+                    <div class="coupon-box" id="readyClaimCard">
+                        <div class="coupon-label">🎉 축하합니다! 당첨 대상자 본인 확인이 완료되었습니다.</div>
+                        <p style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 22px;">
+                            아래 버튼을 누르면 1회성 무작위 당첨 선물 쿠폰이 즉시 추첨·할당됩니다.
+                        </p>
+                        <form action="/claim" method="POST" id="claimForm">
+                            <input type="hidden" name="csrf_token" id="claimCsrf" value="{{ csrf_token }}">
+                            <button type="submit" id="claimBtn" class="btn-chzzk-login" onclick="handleAnimatedClaim(event)">
+                                🎁 행운의 당첨 선물 뽑기!
+                            </button>
+                        </form>
+                    </div>
+
+                {% elif claim_result.code == 'EVENT_PAUSED' %}
+                    <div class="alert-card warning">
+                        <div class="alert-title">⏳ 현재 진행자가 선물 이벤트를 준비 중입니다</div>
+                        <div class="alert-desc">쿠폰 및 당첨자 명단을 최종 검수하고 있습니다. 진행자가 수령을 시작하면 잠시 후 새로고침(F5)하여 뽑기에 참여해 주세요!</div>
+                    </div>
+
+                {% elif claim_result.code == 'SUCCESS' %}
                     <div class="coupon-box">
                         <div class="coupon-label">🎉 무작위 추첨 할당 완료! 당첨 선물 쿠폰 코드</div>
                         {% if claim_result.coupon_name %}
@@ -116,6 +139,7 @@
                         <div class="alert-desc">입력된 치지직 채널 ID (<code>{{ user.channel_id }}</code>)는 이번 이벤트 당첨 대상자 명단에 포함되어 있지 않습니다.</div>
                     </div>
                 {% endif %}
+                </div>
 
             {% endif %}
 
@@ -134,6 +158,128 @@
             setTimeout(() => {
                 toast.remove();
             }, 2600);
+        }
+
+        function launchConfetti() {
+            const canvas = document.getElementById('confettiCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const colors = ['#00FFA3', '#FFB800', '#FFFFFF', '#00D688', '#38BDF8'];
+            const particles = Array.from({ length: 85 }, () => ({
+                x: canvas.width * (0.3 + Math.random() * 0.4),
+                y: canvas.height * 0.45,
+                vx: (Math.random() - 0.5) * 14,
+                vy: (Math.random() - 1.15) * 14,
+                size: 5 + Math.random() * 6,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.25,
+                life: 1.0
+            }));
+
+            function tick() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                let alive = false;
+                for (const p of particles) {
+                    if (p.life <= 0) continue;
+                    alive = true;
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.35;
+                    p.rot += p.vRot;
+                    p.life -= 0.012;
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, p.life);
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rot);
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                    ctx.restore();
+                }
+                if (alive) {
+                    requestAnimationFrame(tick);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            }
+            requestAnimationFrame(tick);
+        }
+
+        function renderClaimedBox(data) {
+            const mount = document.getElementById('claimArea');
+            if (!mount) return;
+            mount.replaceChildren();
+
+            const box = document.createElement('div');
+            box.className = 'coupon-box';
+
+            const label = document.createElement('div');
+            label.className = 'coupon-label';
+            label.textContent = '🎉 무작위 추첨 할당 완료! 당첨 선물 쿠폰 코드';
+            box.appendChild(label);
+
+            if (data.coupon_name) {
+                const badge = document.createElement('div');
+                badge.className = 'prize-badge';
+                badge.textContent = '🎁 당첨 경품: ' + data.coupon_name;
+                box.appendChild(badge);
+            }
+
+            const codeEl = document.createElement('div');
+            codeEl.className = 'coupon-code';
+            codeEl.id = 'couponCode';
+            codeEl.textContent = data.coupon_code || '';
+            box.appendChild(codeEl);
+
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'btn-copy';
+            copyBtn.textContent = '📋 쿠폰 코드 복사하기';
+            copyBtn.addEventListener('click', () => copyCouponCode(copyBtn));
+            box.appendChild(copyBtn);
+
+            const timeEl = document.createElement('p');
+            timeEl.style.fontSize = '0.8rem';
+            timeEl.style.color = 'var(--text-muted)';
+            timeEl.style.marginTop = '15px';
+            timeEl.textContent = `* 1회성 쿠폰이 할당되었습니다. (수령 시각: ${data.claimed_at || '-'})`;
+            box.appendChild(timeEl);
+
+            mount.appendChild(box);
+        }
+
+        async function handleAnimatedClaim(event) {
+            event.preventDefault();
+            const btn = document.getElementById('claimBtn');
+            const csrf = document.getElementById('claimCsrf')?.value || '';
+            if (!btn || btn.disabled) return;
+
+            btn.disabled = true;
+            btn.classList.add('claim-pulse');
+            btn.textContent = '🎰 두구두구... 선물을 추첨하고 있습니다!';
+
+            try {
+                const delayPromise = new Promise(resolve => setTimeout(resolve, 900));
+                const apiPromise = fetch('/api/claim', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ csrf_token: csrf })
+                }).then(r => r.json());
+
+                const [, res] = await Promise.all([delayPromise, apiPromise]);
+                if (res.code === 'SUCCESS' || res.code === 'ALREADY_CLAIMED') {
+                    renderClaimedBox(res);
+                    launchConfetti();
+                    showToast('🎉 축하합니다! 당첨 선물이 발급되었습니다!');
+                } else {
+                    window.location.reload();
+                }
+            } catch (e) {
+                document.getElementById('claimForm')?.submit();
+            }
         }
 
         function copyCouponCode(btn) {
@@ -181,6 +327,10 @@
                 showToast('복사에 실패했습니다. 직접 선택해 복사해 주세요.');
             }
         }
+
+        {% if claim_result and claim_result.code == 'SUCCESS' %}
+        window.addEventListener('DOMContentLoaded', launchConfetti);
+        {% endif %}
     </script>
 </body>
 </html>

@@ -59,13 +59,40 @@
                 <div class="admin-header">
                     <div>
                         <h1 style="font-size: 1.8rem; font-weight: 800;">🎙️ 무작위 쿠폰 풀 관리 대시보드</h1>
-                        <p style="color: var(--text-muted); font-size: 0.9rem;">선물 쿠폰 코드를 등록해 두면, 당첨자가 로그인 시 1개씩 무작위 자동 할당됩니다.</p>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">선물 쿠폰 코드를 등록해 두면, 당첨자가 버튼 클릭 시 1개씩 무작위 추첨 할당됩니다.</p>
                     </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" onclick="copyViewerShareText()" class="btn-primary" style="background: linear-gradient(135deg, #00FFA3, #00C853); color: #000; font-weight: bold; font-size: 0.85rem; padding: 8px 16px;">
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" onclick="openQrModal()" class="btn-copy" style="font-size: 0.85rem; padding: 8px 14px;">
+                            📱 방송용 QR 코드
+                        </button>
+                        <button type="button" onclick="copyViewerShareText()" class="btn-primary" style="background: linear-gradient(135deg, #00FFA3, #00C853); color: #000; font-weight: bold; font-size: 0.85rem; padding: 8px 16px; width: auto;">
                             📋 시청자 수령 안내문 & 주소 복사
                         </button>
-                        <a href="/admin/export-coupons-csv" class="btn-copy" style="text-decoration: none; display: inline-block;">📥 쿠폰 풀 CSV 내보내기</a>
+                        <a href="/admin/export-coupons-csv" class="btn-copy" style="text-decoration: none; display: inline-block; padding: 8px 14px; font-size: 0.85rem;">📥 쿠폰 CSV 내보내기</a>
+                    </div>
+                </div>
+
+                <!-- 🟢 이벤트 수령 오픈 / 일시정지 & 새 이벤트 초기화 제어 바 -->
+                <div class="event-status-bar">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <span id="eventStatusPill" class="status-pill {% if event_active %}open{% else %}paused{% endif %}">
+                            {% if event_active %}🟢 이벤트 수령 오픈 중{% else %}🔴 수령 일시정지 (준비 중){% endif %}
+                        </span>
+                        <span style="font-size: 0.82rem; color: var(--text-muted);">
+                            {% if event_active %}당첨 시청자가 즉시 선물을 뽑을 수 있습니다.{% else %}시청자에게 '이벤트 준비 중' 안내 화면이 표시됩니다.{% endif %}
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <form action="/admin/toggle-event" method="POST" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" id="toggleEventBtn" class="btn-toggle-event {% if event_active %}to-pause{% else %}to-open{% endif %}">
+                                {% if event_active %}⏸️ 수령 일시정지(준비 중) 전환{% else %}▶️ 이벤트 수령 시작하기{% endif %}
+                            </button>
+                        </form>
+                        <form action="/admin/reset-all-event" method="POST" style="display: inline;" onsubmit="return confirm('⚠️ 새 이벤트를 위해 모든 쿠폰과 당첨자 명단이 초기화됩니다.\n초기화 전 [CSV 내보내기]로 결과를 백업하셨나요? 계속하시겠습니까?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-reset-event">🔄 새 이벤트 전체 초기화</button>
+                        </form>
                     </div>
                 </div>
 
@@ -109,14 +136,29 @@
                         copyTextToClipboard(text, "📋 시청자 공유용 수령 안내문과 링크가 복사되었습니다!");
                     }
                     function copyTunnelText(text) {
+                        if (!text) return;
                         copyTextToClipboard(text, "📋 클립보드에 복사되었습니다!");
                     }
                     function applyRedirectUri(uri) {
                         const input = document.querySelector('input[name="redirect_uri"]');
-                        if (input) {
+                        if (input && uri) {
                             input.value = uri;
                             showToast("⚡ Redirect URI 적용 완료! [💾 설정 저장] 버튼을 눌러 주세요.");
                         }
+                    }
+                    function openQrModal() {
+                        const liveUrl = document.getElementById('live-tunnel-url');
+                        const target = liveUrl ? liveUrl.innerText.trim() : window.location.origin;
+                        const modal = document.getElementById('qrModal');
+                        const img = document.getElementById('qrModalImg');
+                        const urlText = document.getElementById('qrModalUrl');
+                        if (img) img.src = '/admin/api/qrcode?url=' + encodeURIComponent(target);
+                        if (urlText) urlText.textContent = target;
+                        if (modal) modal.classList.add('open');
+                    }
+                    function closeQrModal() {
+                        const modal = document.getElementById('qrModal');
+                        if (modal) modal.classList.remove('open');
                     }
                 </script>
 
@@ -134,13 +176,13 @@
                                 </div>
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button type="button" onclick="copyTunnelText('{{ tunnel_url }}')" class="btn-primary" style="background: var(--chzzk-mint); color: #000; font-weight: bold; font-size: 0.85rem; padding: 8px 14px;">
+                                <button type="button" data-url="{{ tunnel_url }}" onclick="copyTunnelText(this.dataset.url)" class="btn-primary" style="background: var(--chzzk-mint); color: #000; font-weight: bold; font-size: 0.85rem; padding: 8px 14px; width: auto;">
                                     📋 시청자용 주소 복사
                                 </button>
-                                <button type="button" onclick="copyTunnelText('{{ tunnel_url }}/auth/chzzk/callback')" class="btn-copy" style="font-size: 0.85rem; padding: 8px 14px;">
+                                <button type="button" data-url="{{ tunnel_url }}/auth/chzzk/callback" onclick="copyTunnelText(this.dataset.url)" class="btn-copy" style="font-size: 0.85rem; padding: 8px 14px;">
                                     🔑 Callback URL 복사
                                 </button>
-                                <button type="button" onclick="applyRedirectUri('{{ tunnel_url }}/auth/chzzk/callback')" class="btn-copy" style="background: rgba(255, 184, 0, 0.2); border-color: var(--accent-yellow); color: #FFF; font-size: 0.85rem; padding: 8px 14px;">
+                                <button type="button" data-uri="{{ tunnel_url }}/auth/chzzk/callback" onclick="applyRedirectUri(this.dataset.uri)" class="btn-copy" style="background: rgba(255, 184, 0, 0.2); border-color: var(--accent-yellow); color: #FFF; font-size: 0.85rem; padding: 8px 14px;">
                                     ⚡ Redirect URI 자동 입력
                                 </button>
                             </div>
@@ -151,7 +193,13 @@
                         <div style="font-size: 0.85rem; color: var(--text-muted);">
                             💡 <strong>외부 시청자 접속 주소</strong>: <code>run_public.bat</code> 파일이 실행되면 생성된 외부 접속 주소(https://...)가 여기에 1초 만에 자동으로 표시됩니다!
                         </div>
-                        <span style="font-size: 0.75rem; background: rgba(255, 255, 255, 0.05); padding: 4px 10px; border-radius: 4px; color: var(--text-muted);">현재 로컬 가동 중 (localhost:8000)</span>
+                        <span style="font-size: 0.75rem; background: rgba(255, 255, 255, 0.05); padding: 4px 10px; border-radius: 4px; color: var(--text-muted);">현재 로컬 가동 중 (127.0.0.1:8000)</span>
+                    </div>
+                {% endif %}
+
+                {% if error_msg %}
+                    <div class="alert-card danger" style="padding: 12px; margin-bottom: 20px; font-size: 0.85rem;">
+                        {{ error_msg }}
                     </div>
                 {% endif %}
 
@@ -177,6 +225,15 @@
                         </div>
                         <div id="statRemaining" style="font-size: 1.8rem; font-weight: 800; color: {% if stats.remaining <= 5 %}var(--accent-red){% else %}var(--accent-yellow){% endif %}; margin-top: 5px;">{{ stats.remaining }}개</div>
                     </div>
+                </div>
+
+                <!-- 경품 종류별 잔여 수량 요약 배지 -->
+                <div id="prizeBreakdownBar" class="prize-breakdown-bar" {% if not prize_breakdown %}style="display: none;"{% endif %}>
+                    {% for p in prize_breakdown %}
+                        <span class="prize-summary-pill {% if p.remaining == 0 %}depleted{% endif %}">
+                            🎁 {{ p.prize_name }}: {{ p.remaining }}/{{ p.total }}개 남음
+                        </span>
+                    {% endfor %}
                 </div>
 
                 <!-- 공지 문구 및 비밀번호 변경 2열 그리드 -->
@@ -206,17 +263,24 @@
                     </div>
                 </div>
 
-                <!-- 🔑 네이버 치지직 API 키 및 서버 설정 카드 -->
+                <!-- 🔑 치지직/네이버 API 키 및 서버 설정 카드 -->
                 <div style="background: rgba(0, 255, 163, 0.03); border: 1px solid var(--chzzk-mint); padding: 18px 20px; border-radius: var(--radius-md); margin-bottom: 25px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div>
-                            <h3 style="font-size: 1.05rem; margin: 0; color: var(--chzzk-mint); display: inline-block;">🔑 네이버 치지직 API 키 및 서버 설정</h3>
-                            <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">(개발자 센터 API 키 및 Cloudflare 고정 터널 설정을 안전하게 관리합니다)</span>
+                            <h3 style="font-size: 1.05rem; margin: 0; color: var(--chzzk-mint); display: inline-block;">🔑 치지직/네이버 API 키 및 서버 설정</h3>
+                            <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">(치지직 공식 Open API 또는 네이버 로그인 및 Cloudflare 고정 터널을 관리합니다)</span>
                         </div>
                     </div>
 
                     <form action="/admin/update-env" method="POST" class="env-form-grid">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <div>
+                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">인증 방식 (OAuth Provider)</label>
+                            <select name="oauth_provider" class="form-input" style="font-size: 0.8rem; padding: 6px 10px; background: #1E2636;">
+                                <option value="chzzk" {% if oauth_provider == 'chzzk' %}selected{% endif %}>치지직 공식 Open API (권장)</option>
+                                <option value="naver" {% if oauth_provider == 'naver' %}selected{% endif %}>네이버 로그인 (네아로 호환)</option>
+                            </select>
+                        </div>
                         <div>
                             <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Client ID (클라이언트 아이디)</label>
                             <input type="text" name="client_id" class="form-input" value="{{ chzzk_client_id }}" placeholder="발급받은 Client ID" style="font-size: 0.8rem; padding: 6px 10px;">
@@ -241,8 +305,8 @@
                             </label>
                         </div>
                         <div>
-                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">당첨자 닉네임 보조 매칭</label>
-                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; height: 31px; cursor: pointer; color: var(--text-color);" title="ID 체계가 다르더라도 닉네임 일치 시 당첨자 인정 및 자동 바인딩">
+                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">닉네임만 등록된 명단 보조 매칭</label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; height: 31px; cursor: pointer; color: var(--text-color);" title="ID 없이 닉네임만 등록된 명단에 한해 닉네임으로 매칭합니다. ID가 등록된 당첨자는 항상 고유 ID로만 검증됩니다.">
                                 <input type="checkbox" name="allow_nickname_match" value="true" {% if allow_nickname_match %}checked{% endif %}>
                                 <span>닉네임 매칭 허용</span>
                             </label>
@@ -297,14 +361,20 @@
                         <form action="/admin/add-winner" method="POST" style="margin-bottom: 20px;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="form-group">
-                                <label for="channel_id">치지직 채널 ID (channelId)</label>
-                                <input type="text" id="channel_id" name="channel_id" class="form-input" placeholder="예: user_12345" required>
+                                <label for="winners_bulk">여러 명 한 번에 붙여넣기 (줄바꿈 구분: <code>채널ID,닉네임</code> 또는 <code>채널ID</code>)</label>
+                                <textarea id="winners_bulk" name="winners_bulk" rows="2" class="form-input" placeholder="예: 32819034,치즈냥이&#10;a1b2c3d4...,열혈시청자 (여기가 비어있으면 아래 단일 입력 사용)" style="resize: vertical; font-family: monospace;"></textarea>
                             </div>
-                            <div class="form-group">
-                                <label for="nickname">당첨자 닉네임</label>
-                                <input type="text" id="nickname" name="nickname" class="form-input" placeholder="예: 치지직시청자" value="치지직시청자">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="channel_id">단일 채널 ID (channelId)</label>
+                                    <input type="text" id="channel_id" name="channel_id" class="form-input" placeholder="예: user_12345">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="nickname">단일 당첨자 닉네임</label>
+                                    <input type="text" id="nickname" name="nickname" class="form-input" placeholder="예: 치지직시청자" value="치지직시청자">
+                                </div>
                             </div>
-                            <button type="submit" class="btn-primary">당첨 대상자 추가</button>
+                            <button type="submit" class="btn-primary">당첨 대상자 등록하기</button>
                         </form>
 
                         <hr style="border-color: var(--border-color); margin: 15px 0;">
@@ -327,23 +397,28 @@
 
                 <!-- 3. 쿠폰 실시간 검색 및 발급 현황 테이블 (접기/펼치기 가능) -->
                 <div style="margin-top: 10px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 14px 20px; border-radius: var(--radius-md); cursor: pointer; user-select: none;" onclick="toggleCouponSection()">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 14px 20px; border-radius: var(--radius-md); cursor: pointer; user-select: none;" onclick="toggleCouponSection()">
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <span id="couponToggleIcon" style="font-size: 1.1rem; transition: transform 0.25s ease; color: var(--chzzk-mint); display: inline-block;">▶</span>
                             <div>
                                 <h3 style="font-size: 1.15rem; margin: 0; display: inline-block;">📊 쿠폰 풀 상태 및 발급 내역 목록 <span style="font-size: 0.9rem; color: var(--chzzk-mint); font-weight: normal;">(총 {{ coupons|length }}개)</span></h3>
-                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 {% if search_query %}접기{% else %}펼치기{% endif %}]</span>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 펼치기/접기]</span>
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" onclick="event.stopPropagation();">
-                            <button type="button" id="toggleBlurBtn" onclick="toggleAllCouponBlur()" class="btn-copy" style="padding: 6px 12px; font-size: 0.8rem;">👁️ 미수령 쿠폰 코드 표시/숨김</button>
+                            <div class="filter-tabs" id="couponFilterTabs">
+                                <button type="button" class="filter-tab active" onclick="filterTableRows('couponTableBody', 'all', this)">전체</button>
+                                <button type="button" class="filter-tab" onclick="filterTableRows('couponTableBody', 'pending', this)">대기 중</button>
+                                <button type="button" class="filter-tab" onclick="filterTableRows('couponTableBody', 'claimed', this)">발급 완료</button>
+                            </div>
+                            <button type="button" id="toggleBlurBtn" onclick="toggleAllCouponBlur()" class="btn-copy" style="padding: 6px 12px; font-size: 0.8rem;">👁️ 전체 쿠폰 코드 표시/숨김</button>
                             <form action="/admin/clear-coupons" method="POST" onsubmit="return confirm('정말로 쿠폰 풀의 모든 쿠폰 코드를 삭제하시겠습니까?');" style="display: inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" style="background: rgba(255,77,77,0.2); color: var(--accent-red); border:1px solid var(--accent-red); padding:6px 12px; border-radius:8px; font-size:0.8rem; cursor:pointer;">🗑️ 전체 쿠폰 삭제</button>
                             </form>
 
                             <form action="/admin" method="GET" style="display: flex; gap: 6px;">
-                                <input type="text" name="search" class="form-input" placeholder="코드 / 상품명 / ID 검색..." value="{{ search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 190px;">
+                                <input type="text" name="search" class="form-input" placeholder="코드 / 상품명 / ID 검색..." value="{{ search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 180px;">
                                 <button type="submit" class="btn-copy" style="padding: 6px 12px; font-size: 0.85rem;">검색</button>
                                 {% if search_query %}
                                     <a href="/admin" class="btn-logout" style="line-height: 24px;">초기화</a>
@@ -360,7 +435,7 @@
                                     <tr>
                                         <th>ID</th>
                                         <th>상품명</th>
-                                        <th>쿠폰 코드</th>
+                                        <th>쿠폰 코드 (클릭해 확인)</th>
                                         <th>할당된 치지직 채널 ID</th>
                                         <th>닉네임</th>
                                         <th>발급 상태</th>
@@ -368,16 +443,12 @@
                                         <th>관리</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="couponTableBody">
                                     {% for c in coupons %}
-                                        <tr>
+                                        <tr data-status="{% if c.assigned_channel_id %}claimed{% else %}pending{% endif %}">
                                             <td>{{ c.id }}</td>
                                             <td>{{ c.coupon_name or '-' }}</td>
-                                            {% if not c.assigned_channel_id %}
-                                                <td class="coupon-blur unassigned-code" onclick="this.classList.toggle('revealed')" title="클릭하여 코드 확인/숨김" style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
-                                            {% else %}
-                                                <td style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
-                                            {% endif %}
+                                            <td class="coupon-blur secret-code-cell" onclick="this.classList.toggle('revealed')" title="클릭하여 코드 확인/숨김" style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">{{ c.coupon_code }}</td>
                                             <td><code>{{ c.assigned_channel_id or '-' }}</code></td>
                                             <td><strong>{{ c.assigned_nickname or '-' }}</strong></td>
                                             <td>
@@ -426,15 +497,20 @@
 
                 <!-- 4. 당첨 대상자 명단 목록 및 상태 UI (접기/펼치기 가능) -->
                 <div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 14px 20px; border-radius: var(--radius-md); cursor: pointer; user-select: none;" onclick="toggleWinnerSection()">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 14px 20px; border-radius: var(--radius-md); cursor: pointer; user-select: none;" onclick="toggleWinnerSection()">
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <span id="winnerToggleIcon" style="font-size: 1.1rem; transition: transform 0.25s ease; color: var(--chzzk-mint); display: inline-block;">▶</span>
                             <div>
                                 <h3 style="font-size: 1.15rem; margin: 0; display: inline-block;">👥 등록된 당첨 대상자 명단 <span style="font-size: 0.9rem; color: var(--chzzk-mint); font-weight: normal;">(총 {{ allowed_winners|length }}명)</span></h3>
-                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 {% if winner_search_query %}접기{% else %}펼치기{% endif %}]</span>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 10px;">[클릭하여 펼치기/접기]</span>
                             </div>
                         </div>
-                        <div style="display: flex; gap: 8px; align-items: center;" onclick="event.stopPropagation();">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" onclick="event.stopPropagation();">
+                            <div class="filter-tabs" id="winnerFilterTabs">
+                                <button type="button" class="filter-tab active" onclick="filterTableRows('winnerTableBody', 'all', this)">전체</button>
+                                <button type="button" class="filter-tab" onclick="filterTableRows('winnerTableBody', 'pending', this)">미수령</button>
+                                <button type="button" class="filter-tab" onclick="filterTableRows('winnerTableBody', 'claimed', this)">수령 완료</button>
+                            </div>
                             <a href="/admin/export-winners-csv" class="btn-copy" style="text-decoration: none; font-size: 0.8rem; padding: 6px 12px;">📥 명단 CSV 내보내기</a>
                             
                             <form action="/admin/clear-winners" method="POST" onsubmit="return confirm('정말로 등록된 모든 당첨자 명단을 삭제하시겠습니까?');" style="display: inline;">
@@ -443,7 +519,7 @@
                             </form>
 
                             <form action="/admin" method="GET" style="display: flex; gap: 6px;">
-                                <input type="text" name="winner_search" class="form-input" placeholder="채널 ID / 닉네임 검색..." value="{{ winner_search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 180px;">
+                                <input type="text" name="winner_search" class="form-input" placeholder="채널 ID / 닉네임 검색..." value="{{ winner_search_query }}" style="padding: 6px 12px; font-size: 0.85rem; width: 170px;">
                                 <button type="submit" class="btn-copy" style="padding: 6px 12px; font-size: 0.85rem;">검색</button>
                                 {% if winner_search_query %}
                                     <a href="/admin" class="btn-logout" style="line-height: 24px;">초기화</a>
@@ -463,14 +539,14 @@
                                         <th>치지직 채널 ID (channelId)</th>
                                         <th>닉네임</th>
                                         <th>쿠폰 수령 여부</th>
-                                        <th>할당된 쿠폰 코드</th>
+                                        <th>할당된 쿠폰 코드 (클릭해 확인)</th>
                                         <th>수령 시각</th>
                                         <th>관리</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="winnerTableBody">
                                     {% for w in allowed_winners %}
-                                        <tr>
+                                        <tr data-status="{% if w.coupon_code %}claimed{% else %}pending{% endif %}">
                                             <td>{{ loop.index }}</td>
                                             <td><code>{{ w.channel_id }}</code></td>
                                             <td><strong>{{ w.nickname }}</strong></td>
@@ -481,9 +557,13 @@
                                                     <span class="badge badge-pending">미수령</span>
                                                 {% endif %}
                                             </td>
-                                            <td style="font-family: monospace; font-weight: bold; color: {% if w.coupon_code %}var(--chzzk-mint){% else %}var(--text-muted){% endif %};">
-                                                {{ w.coupon_code or '-' }}{% if w.coupon_name %} <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">({{ w.coupon_name }})</span>{% endif %}
-                                            </td>
+                                            {% if w.coupon_code %}
+                                                <td class="coupon-blur secret-code-cell" onclick="this.classList.toggle('revealed')" title="클릭하여 코드 확인/숨김" style="font-family: monospace; font-weight: bold; color: var(--chzzk-mint);">
+                                                    {{ w.coupon_code }}{% if w.coupon_name %} <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">({{ w.coupon_name }})</span>{% endif %}
+                                                </td>
+                                            {% else %}
+                                                <td style="font-family: monospace; color: var(--text-muted);">-</td>
+                                            {% endif %}
                                             <td style="font-size: 0.8rem; color: var(--text-muted);">{{ w.claimed_at or '-' }}</td>
                                             <td>
                                                 <form action="/admin/delete-winner" method="POST" style="display:inline;" onsubmit="return confirm('이 당첨자를 명단에서 삭제하시겠습니까?');">
@@ -514,7 +594,7 @@
                     let allRevealed = false;
                     function toggleAllCouponBlur() {
                         allRevealed = !allRevealed;
-                        const cells = document.querySelectorAll('.unassigned-code');
+                        const cells = document.querySelectorAll('.secret-code-cell');
                         cells.forEach(cell => {
                             if (allRevealed) {
                                 cell.classList.add('revealed');
@@ -522,42 +602,76 @@
                                 cell.classList.remove('revealed');
                             }
                         });
-                        showToast(allRevealed ? '👁️ 미수령 쿠폰 코드가 표시됩니다 (방송 화면 주의)' : '🙈 미수령 쿠폰 코드가 블러 보호되었습니다.');
+                        showToast(allRevealed ? '👁️ 모든 쿠폰 코드가 표시됩니다 (방송 화면 주의)' : '🙈 모든 쿠폰 코드가 블러 보호되었습니다.');
+                    }
+
+                    function filterTableRows(tbodyId, statusFilter, btn) {
+                        if (btn && btn.parentElement) {
+                            btn.parentElement.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                        }
+                        const tbody = document.getElementById(tbodyId);
+                        if (!tbody) return;
+                        tbody.querySelectorAll('tr[data-status]').forEach(row => {
+                            if (statusFilter === 'all' || row.dataset.status === statusFilter) {
+                                row.style.display = '';
+                            } else {
+                                row.style.display = 'none';
+                            }
+                        });
+                    }
+
+                    function setSectionState(bodyId, iconId, storageKey, open) {
+                        const body = document.getElementById(bodyId);
+                        const icon = document.getElementById(iconId);
+                        if (!body || !icon) return;
+                        body.style.display = open ? 'block' : 'none';
+                        icon.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+                        try {
+                            sessionStorage.setItem(storageKey, open ? '1' : '0');
+                        } catch (e) {}
                     }
 
                     function toggleCouponSection() {
                         const body = document.getElementById('couponSectionBody');
-                        const icon = document.getElementById('couponToggleIcon');
-                        if (body.style.display === 'none' || body.style.display === '') {
-                            body.style.display = 'block';
-                            icon.style.transform = 'rotate(90deg)';
-                        } else {
-                            body.style.display = 'none';
-                            icon.style.transform = 'rotate(0deg)';
-                        }
+                        const isHidden = body.style.display === 'none' || body.style.display === '';
+                        setSectionState('couponSectionBody', 'couponToggleIcon', 'couponSectionOpen', isHidden);
                     }
 
                     function toggleWinnerSection() {
                         const body = document.getElementById('winnerSectionBody');
-                        const icon = document.getElementById('winnerToggleIcon');
-                        if (body.style.display === 'none' || body.style.display === '') {
-                            body.style.display = 'block';
-                            icon.style.transform = 'rotate(90deg)';
-                        } else {
-                            body.style.display = 'none';
-                            icon.style.transform = 'rotate(0deg)';
-                        }
+                        const isHidden = body.style.display === 'none' || body.style.display === '';
+                        setSectionState('winnerSectionBody', 'winnerToggleIcon', 'winnerSectionOpen', isHidden);
                     }
 
-                    // 검색어 존재 시 기본 펼침 상태 유지
-                    if (document.getElementById('couponSectionBody') && document.getElementById('couponSectionBody').style.display !== 'none') {
-                        document.getElementById('couponToggleIcon').style.transform = 'rotate(90deg)';
-                    }
-                    if (document.getElementById('winnerSectionBody') && document.getElementById('winnerSectionBody').style.display !== 'none') {
-                        document.getElementById('winnerToggleIcon').style.transform = 'rotate(90deg)';
-                    }
+                    // 아코디언 열림 상태 & 스크롤 위치 복원
+                    window.addEventListener('DOMContentLoaded', () => {
+                        try {
+                            if (sessionStorage.getItem('couponSectionOpen') === '1' || {{ 'true' if search_query else 'false' }}) {
+                                setSectionState('couponSectionBody', 'couponToggleIcon', 'couponSectionOpen', true);
+                            }
+                            if (sessionStorage.getItem('winnerSectionOpen') === '1' || {{ 'true' if winner_search_query else 'false' }}) {
+                                setSectionState('winnerSectionBody', 'winnerToggleIcon', 'winnerSectionOpen', true);
+                            }
+                            const savedY = sessionStorage.getItem('adminScrollY');
+                            if (savedY) {
+                                window.scrollTo(0, parseInt(savedY, 10));
+                                sessionStorage.removeItem('adminScrollY');
+                            }
+                        } catch (e) {}
+                    });
 
-                    // 실시간 통계 5초 자동 갱신 (Live Polling)
+                    document.addEventListener('submit', () => {
+                        try {
+                            sessionStorage.setItem('adminScrollY', String(window.scrollY));
+                        } catch (e) {}
+                    });
+
+                    window.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape') closeQrModal();
+                    });
+
+                    // 실시간 통계 & 경품별 잔여 수량 5초 자동 갱신
                     setInterval(async () => {
                         try {
                             const resp = await fetch('/admin/api/stats');
@@ -580,6 +694,23 @@
                                 }
                                 if (elRemainingCard) elRemainingCard.style.borderColor = color;
                             }
+
+                            const breakdownBar = document.getElementById('prizeBreakdownBar');
+                            if (breakdownBar && Array.isArray(data.prize_breakdown)) {
+                                breakdownBar.replaceChildren();
+                                if (data.prize_breakdown.length === 0) {
+                                    breakdownBar.style.display = 'none';
+                                } else {
+                                    breakdownBar.style.display = 'flex';
+                                    for (const p of data.prize_breakdown) {
+                                        const pill = document.createElement('span');
+                                        pill.className = 'prize-summary-pill' + (p.remaining === 0 ? ' depleted' : '');
+                                        pill.textContent = `🎁 ${p.prize_name}: ${p.remaining}/${p.total}개 남음`;
+                                        breakdownBar.appendChild(pill);
+                                    }
+                                }
+                            }
+
                             const liveUrlEl = document.getElementById('live-tunnel-url');
                             if (liveUrlEl && data.tunnel_url && liveUrlEl.innerText.trim() !== data.tunnel_url) {
                                 liveUrlEl.innerText = data.tunnel_url;
@@ -591,6 +722,19 @@
             </div>
         {% endif %}
 
+    </div>
+
+    <!-- 📱 방송 송출용 QR 코드 모달 -->
+    <div id="qrModal" class="modal-backdrop" onclick="if (event.target === this) closeQrModal();">
+        <div class="modal-card">
+            <h3 style="font-size: 1.2rem; font-weight: 800; color: var(--chzzk-mint); margin-bottom: 6px;">📱 시청자 당첨 선물 수령 QR</h3>
+            <p style="font-size: 0.82rem; color: var(--text-muted);">방송 화면 한쪽에 띄워 시청자가 모바일로 바로 스캔하게 할 수 있습니다.</p>
+            <div class="qr-box">
+                <img id="qrModalImg" src="" alt="QR Code" style="width: 220px; height: 220px; display: block;">
+            </div>
+            <div id="qrModalUrl" style="font-family: monospace; font-size: 0.8rem; color: #FFF; word-break: break-all; margin-bottom: 16px;"></div>
+            <button type="button" onclick="closeQrModal()" class="btn-primary" style="width: 100%;">닫기 (ESC)</button>
+        </div>
     </div>
 
     <div class="toast-container" id="toastContainer"></div>
