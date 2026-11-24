@@ -26,13 +26,41 @@
 
 ## 📸 주요 서비스 화면 미리보기
 
-| 1. 시청자 첫 접속 화면 (로그인 전) | 2. 당첨 선물 쿠폰 수령 완료 화면 |
-| :---: | :---: |
-| ![시청자 첫 접속 화면](docs/screenshots/01_viewer_page.png) | ![쿠폰 수령 완료 화면](docs/screenshots/02_coupon_claimed.png) |
+### 🎬 시청자 참여 및 수령 화면
 
-| 3. 진행자 무작위 쿠폰 풀 관리 대시보드 | 4. 미당첨자 접근 제한 안내 화면 |
+| 1. 시청자 첫 접속 화면 (로그인 전) | 2. 본인 확인 완료 · 뽑기 대기 화면 |
 | :---: | :---: |
-| ![진행자 관리 대시보드](docs/screenshots/03_admin_dashboard.png) | ![미당첨자 접근 제한](docs/screenshots/04_unauthorized_user.png) |
+| ![시청자 첫 접속 화면](docs/screenshots/01_viewer_page.png) | ![뽑기 대기 화면](docs/screenshots/05_ready_to_claim.png) |
+
+| 3. 당첨 선물 쿠폰 수령 완료 화면 (폭죽 연출) | 4. 미당첨자 접근 제한 안내 화면 |
+| :---: | :---: |
+| ![쿠폰 수령 완료 화면](docs/screenshots/02_coupon_claimed.png) | ![미당첨자 접근 제한](docs/screenshots/04_unauthorized_user.png) |
+
+| 5. 이벤트 일시정지(준비 중) 안내 화면 | |
+| :---: | :---: |
+| ![이벤트 준비 중 안내](docs/screenshots/06_event_paused.png) | *준비·검수 중에는 수령을 일시정지하여 오지급을 방지합니다.* |
+
+### 🎙️ 진행자 관리 및 방송 송출 화면
+
+| 6. 진행자 무작위 쿠폰 풀 관리 대시보드 | 7. 방송 화면 송출용 QR 코드 모달 |
+| :---: | :---: |
+| ![진행자 관리 대시보드](docs/screenshots/03_admin_dashboard.png) | ![방송 송출용 QR 코드 모달](docs/screenshots/07_qr_code_modal.png) |
+
+| 8. 쿠폰 풀 · 당첨자 명단 전 구간 블러 보호 테이블 | |
+| :---: | :---: |
+| ![전 구간 블러 보호 테이블](docs/screenshots/08_admin_tables_blur.png) | *미수령·수령 완료 쿠폰 코드 모두 기본 블러 처리되어 방송 노출 사고를 방지합니다.* |
+
+---
+
+## 🏷️ 릴리즈 히스토리
+
+각 버전의 상세 변경 내역과 패치 노트는 [GitHub Releases](https://github.com/ManofKimchi08/chzzk-coupon-app/releases)에서 확인할 수 있습니다.
+
+- **v2.3.0 (Latest)** — 고유 `channelId` 사칭 방지 강화, 치지직 공식 Open API + 네이버 OAuth 이중 지원, 명시적 뽑기(`POST /claim`) 및 폭죽 연출, 이벤트 오픈/일시정지 스위치, QR 모달, 전 구간 블러 보호, `tunnel_manager.py` 프로세스 자동 정리
+- **v2.2.0** — 생방송 쿠폰 블러 보호, 경품명 등록 및 경품별 재고 집계, 여러 줄 일괄 등록, 5초 실시간 대시보드 폴링
+- **v2.1.0** — 레드팀 보안 취약점 7종 패치 (`SECRET_KEY` 자동 생성, 외부 Mock 차단, 로그인 잠금, 시크릿 마스킹, CSV 수식 인젝션 방어)
+- **v2.0.0** — `ChzzkCouponServer.exe` 원클릭 실행 및 Cloudflare 터널 통합, CSRF/Timing/DoS 보안 및 SQLite WAL 최적화
+- **v1.2.0** — 당첨 대상자 명단 관리 UI, 전체 일괄 초기화, 스마트 CSV 컬럼 자동 인식
 
 ---
 
