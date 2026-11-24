@@ -26,29 +26,21 @@
 
 ## 📸 주요 서비스 화면 미리보기
 
-### 🎬 시청자 참여 및 수령 화면
+### 시청자 참여 흐름
 
-| 1. 시청자 첫 접속 화면 (로그인 전) | 2. 본인 확인 완료 · 뽑기 대기 화면 |
+| 1. 첫 접속 (로그인 전) | 2. 본인 확인 완료 · 뽑기 대기 |
 | :---: | :---: |
-| ![시청자 첫 접속 화면](docs/screenshots/01_viewer_page.png) | ![뽑기 대기 화면](docs/screenshots/05_ready_to_claim.png) |
+| ![첫 접속](docs/screenshots/01_viewer_page.png) | ![뽑기 대기](docs/screenshots/05_ready_to_claim.png) |
+| **3. 쿠폰 수령 완료 (폭죽 연출)** | **4. 미당첨자 접근 제한** |
+| ![수령 완료](docs/screenshots/02_coupon_claimed.png) | ![접근 제한](docs/screenshots/04_unauthorized_user.png) |
 
-| 3. 당첨 선물 쿠폰 수령 완료 화면 (폭죽 연출) | 4. 미당첨자 접근 제한 안내 화면 |
+### 방송 운영 및 보안 제어
+
+| 5. 진행자 관리 대시보드 | 6. 이벤트 일시정지 적용 화면 |
 | :---: | :---: |
-| ![쿠폰 수령 완료 화면](docs/screenshots/02_coupon_claimed.png) | ![미당첨자 접근 제한](docs/screenshots/04_unauthorized_user.png) |
-
-| 5. 이벤트 일시정지(준비 중) 안내 화면 | |
-| :---: | :---: |
-| ![이벤트 준비 중 안내](docs/screenshots/06_event_paused.png) | *준비·검수 중에는 수령을 일시정지하여 오지급을 방지합니다.* |
-
-### 🎙️ 진행자 관리 및 방송 송출 화면
-
-| 6. 진행자 무작위 쿠폰 풀 관리 대시보드 | 7. 방송 화면 송출용 QR 코드 모달 |
-| :---: | :---: |
-| ![진행자 관리 대시보드](docs/screenshots/03_admin_dashboard.png) | ![방송 송출용 QR 코드 모달](docs/screenshots/07_qr_code_modal.png) |
-
-| 8. 쿠폰 풀 · 당첨자 명단 전 구간 블러 보호 테이블 | |
-| :---: | :---: |
-| ![전 구간 블러 보호 테이블](docs/screenshots/08_admin_tables_blur.png) | *미수령·수령 완료 쿠폰 코드 모두 기본 블러 처리되어 방송 노출 사고를 방지합니다.* |
+| ![관리자 대시보드](docs/screenshots/03_admin_dashboard.png) | ![이벤트 일시정지](docs/screenshots/06_event_paused.png) |
+| **7. 방송 송출용 QR 코드 모달** | **8. 쿠폰 풀 · 당첨자 전 구간 블러 보호** |
+| ![QR 모달](docs/screenshots/07_qr_code_modal.png) | ![전 구간 블러 보호](docs/screenshots/08_admin_tables_blur.png) |
 
 ---
 
